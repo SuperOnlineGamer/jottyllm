@@ -4,6 +4,36 @@ import { getSettings } from "@/app/_server/actions/config";
 
 export const dynamic = "force-dynamic";
 
+const getDrawioTargetUrl = (
+  drawioUrl: string,
+  pathSegments: string[],
+  searchParams: string,
+): string | null => {
+  try {
+    const baseUrl = new URL(drawioUrl);
+    if (
+      !["http:", "https:"].includes(baseUrl.protocol) ||
+      baseUrl.username ||
+      baseUrl.password
+    ) {
+      return null;
+    }
+
+    const safeSegments = pathSegments.map((segment) =>
+      encodeURIComponent(segment),
+    );
+    const basePath = baseUrl.pathname.endsWith("/")
+      ? baseUrl.pathname.slice(0, -1)
+      : baseUrl.pathname;
+    baseUrl.pathname = [basePath, ...safeSegments].filter(Boolean).join("/");
+    baseUrl.search = searchParams;
+
+    return baseUrl.toString();
+  } catch {
+    return null;
+  }
+};
+
 async function proxyDrawioRequest(
   request: NextRequest,
   params: { path?: string[] }
@@ -23,17 +53,13 @@ async function proxyDrawioRequest(
     }
 
     const pathSegments = params?.path || [];
-    const targetPath = pathSegments.join("/");
 
     const url = new URL(request.url);
     const searchParams = url.searchParams.toString();
 
-    let targetUrl = drawioUrl;
-    if (targetPath) {
-      targetUrl += `/${targetPath}`;
-    }
-    if (searchParams) {
-      targetUrl += `?${searchParams}`;
+    const targetUrl = getDrawioTargetUrl(drawioUrl, pathSegments, searchParams);
+    if (!targetUrl) {
+      return new NextResponse("Invalid Draw.io proxy target", { status: 400 });
     }
 
     console.log(`[Draw.io Proxy] ${request.method} ${url.pathname}${url.search} -> ${targetUrl}`);

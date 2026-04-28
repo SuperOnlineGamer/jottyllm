@@ -7,6 +7,7 @@ import {
   serverReadDir,
   serverReadFile,
   readOrderFile,
+  getAllFileStats,
 } from "@/app/_server/actions/file";
 import {
   extractYamlMetadata,
@@ -15,16 +16,13 @@ import {
   updateYamlMetadata,
 } from "@/app/_utils/yaml-metadata-utils";
 import {
+  grepExtractAllFrontmatters,
   grepExtractFrontmatter,
   grepExtractExcerpt,
 } from "@/app/_utils/grep-utils";
 import type { FileStatsEntry } from "@/app/_server/actions/file";
 import { parseMarkdownNote } from "./parsers";
 import { Note } from "@/app/_types";
-import { promisify } from "util";
-import { exec } from "child_process";
-
-const execAsync = promisify(exec);
 
 export const readNotesRecursively = async (
   dir: string,
@@ -42,81 +40,10 @@ export const readNotesRecursively = async (
     metadataCache = metadataCache || new Map();
 
     try {
-      const excludeStr = allowArchived
-        ? ""
-        : `-not -path "*/${ARCHIVED_DIR_NAME}/*"`;
-      const statsCmd = `find "${dir}" -name "*.md" ${excludeStr} -printf "%p|%W@|%T@\\n"`;
-      const metaCmd = `grep -rE "^(title|uuid|tags|encrypted):|^[[:space:]]+- |^---$" "${dir}"`;
-      const [statsOut, metaOut] = await Promise.all([
-        execAsync(statsCmd, { maxBuffer: 10 * 1024 * 1024 }).catch(() => ({
-          stdout: "",
-        })),
-        execAsync(metaCmd, { maxBuffer: 10 * 1024 * 1024 }).catch(() => ({
-          stdout: "",
-        })),
+      [statsCache, metadataCache] = await Promise.all([
+        getAllFileStats(dir),
+        grepExtractAllFrontmatters(dir),
       ]);
-
-      statsOut.stdout.split("\n").forEach((line) => {
-        const [p, b, m] = line.split("|");
-        if (p && b && m)
-          statsCache!.set(p, {
-            birthtime: new Date(parseFloat(b) * 1000),
-            mtime: new Date(parseFloat(m) * 1000),
-          });
-      });
-
-      const inFrontmatter = new Map<string, boolean>();
-
-      let inTagsFile = "";
-      for (const line of metaOut.stdout.split("\n")) {
-        if (!line) continue;
-        const colonIdx = line.indexOf(":");
-        if (colonIdx === -1) continue;
-        const filePath = line.slice(0, colonIdx);
-        const rest = line.slice(colonIdx + 1);
-        if (rest.trim() === "---") {
-          inFrontmatter.set(filePath, !inFrontmatter.get(filePath));
-          continue;
-        }
-        if (!inFrontmatter.get(filePath)) continue;
-        if (/^\s+-\s/.test(rest)) {
-          if (inTagsFile === filePath) {
-            const tag = rest.replace(/^\s+-\s+/, "").trim();
-            if (tag) {
-              if (!metadataCache!.has(filePath))
-                metadataCache!.set(filePath, {});
-              const entry = metadataCache!.get(filePath)!;
-              if (!Array.isArray(entry.tags)) entry.tags = [];
-              (entry.tags as string[]).push(tag);
-            }
-          }
-          continue;
-        }
-        inTagsFile = "";
-        const innerColon = rest.indexOf(":");
-        if (innerColon === -1) continue;
-        const key = rest.slice(0, innerColon);
-        const val = rest.slice(innerColon + 1);
-        if (!metadataCache!.has(filePath)) metadataCache!.set(filePath, {});
-        const entry = metadataCache!.get(filePath)!;
-        if (key === "tags") {
-          const trimmed = val.trim();
-          if (trimmed === "") {
-            entry.tags = [];
-            inTagsFile = filePath;
-          } else {
-            entry.tags = trimmed
-              .replace(/^\[|\]$/g, "")
-              .split(",")
-              .map((t: string) => t.trim())
-              .filter(Boolean);
-          }
-        } else if (key === "encrypted") {
-          entry.encrypted = val.trim() === "true";
-        } else {
-          entry[key] = val.trim().replace(/^["']|["']$/g, "");
-        }
-      }
     } catch (e) {
       console.warn("Optimization failed, falling back to standard mode", e);
     }

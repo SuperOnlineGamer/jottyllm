@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { Sun03Icon, GibbousMoonIcon } from "hugeicons-react";
 import { useTranslations } from "next-intl";
 import { ConfirmModal } from "@/app/_components/GlobalComponents/Modals/ConfirmationModals/ConfirmModal";
+import { sanitizeSvgMarkup } from "@/app/_utils/markdown-utils";
 
 export const DrawioNodeView = ({
   node,
@@ -109,7 +110,7 @@ export const DrawioNodeView = ({
             }
 
             updateAttributes({
-              svgData: svgData,
+              svgData: sanitizeSvgMarkup(svgData),
             });
 
             setIsEditing(false);
@@ -202,7 +203,7 @@ export const DrawioNodeView = ({
                     ? "invert(0.92) contrast(0.85) brightness(1.1) saturate(1.2)"
                     : "none",
               }}
-              dangerouslySetInnerHTML={{ __html: node.attrs.svgData }}
+              dangerouslySetInnerHTML={{ __html: sanitizeSvgMarkup(node.attrs.svgData) }}
             />
           </>
         ) : (

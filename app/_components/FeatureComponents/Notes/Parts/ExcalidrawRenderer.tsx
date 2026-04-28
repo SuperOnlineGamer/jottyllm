@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Sun03Icon, GibbousMoonIcon } from "hugeicons-react";
+import { sanitizeSvgMarkup } from "@/app/_utils/markdown-utils";
 
 interface ExcalidrawRendererProps {
   svgData: string;
@@ -15,8 +16,13 @@ export const ExcalidrawRenderer = ({
   className = "",
 }: ExcalidrawRendererProps) => {
   const [themeMode, setThemeMode] = useState(initialTheme);
+  const [sanitizedSvgData, setSanitizedSvgData] = useState("");
 
-  if (!svgData) {
+  useEffect(() => {
+    setSanitizedSvgData(sanitizeSvgMarkup(svgData));
+  }, [svgData]);
+
+  if (!sanitizedSvgData) {
     return null;
   }
 
@@ -47,7 +53,7 @@ export const ExcalidrawRenderer = ({
               ? "invert(0.92) contrast(0.85) brightness(1.1) saturate(1.2)"
               : "none",
         }}
-        dangerouslySetInnerHTML={{ __html: svgData }}
+        dangerouslySetInnerHTML={{ __html: sanitizedSvgData }}
       />
     </div>
   );

@@ -443,6 +443,206 @@ const hasClass = (node: Element, className: string) => {
   return false;
 };
 
+const blockedHtmlTags = new Set([
+  "base",
+  "embed",
+  "foreignobject",
+  "form",
+  "iframe",
+  "input",
+  "link",
+  "math",
+  "meta",
+  "object",
+  "script",
+  "select",
+  "style",
+  "svg",
+  "textarea",
+]);
+
+const globalSafeAttributes = new Set([
+  "align",
+  "alt",
+  "class",
+  "className",
+  "height",
+  "id",
+  "title",
+  "width",
+  "data-callout-type",
+  "data-category",
+  "data-checked",
+  "data-color",
+  "data-convert-to-bidirectional",
+  "data-drawio",
+  "data-drawio-data",
+  "data-drawio-svg",
+  "data-drawio-theme",
+  "data-excalidraw",
+  "data-excalidraw-data",
+  "data-excalidraw-svg",
+  "data-excalidraw-theme",
+  "data-highlight",
+  "data-href",
+  "data-internal-link",
+  "data-item-id",
+  "data-mermaid",
+  "data-mermaid-content",
+  "data-tag",
+  "data-title",
+  "data-type",
+  "data-uuid",
+]);
+
+const tagSafeAttributes: Record<string, Set<string>> = {
+  a: new Set(["href", "rel", "target"]),
+  code: new Set(["className"]),
+  div: new Set(["className"]),
+  img: new Set(["src", "loading", "decoding"]),
+  pre: new Set(["className"]),
+  span: new Set(["className"]),
+  td: new Set(["colSpan", "rowSpan"]),
+  th: new Set(["colSpan", "rowSpan"]),
+};
+
+const isSafeUri = (value: unknown, allowDataImages = false): boolean => {
+  if (value === undefined || value === null) return true;
+
+  const compactValue = String(value)
+    .trim()
+    .replace(/[\u0000-\u001F\u007F\s]+/g, "");
+  if (!compactValue || compactValue.startsWith("#")) return true;
+  if (compactValue.startsWith("/") && !compactValue.startsWith("//")) {
+    return true;
+  }
+  if (!/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(compactValue)) return true;
+
+  if (allowDataImages) {
+    return /^data:image\/(?:png|jpe?g|gif|webp);base64,/i.test(
+      compactValue,
+    );
+  }
+
+  return /^(?:https?|mailto|tel):/i.test(compactValue);
+};
+
+const sanitizeElementAttributes = (node: any) => {
+  if (!node.properties) return;
+
+  const safeAttributes = tagSafeAttributes[node.tagName] || new Set<string>();
+  for (const attributeName of Object.keys(node.properties)) {
+    const normalizedAttribute = attributeName.toLowerCase();
+    const isDataAttribute = normalizedAttribute.startsWith("data-");
+    const isAllowed =
+      globalSafeAttributes.has(attributeName) ||
+      globalSafeAttributes.has(normalizedAttribute) ||
+      safeAttributes.has(attributeName);
+
+    if (
+      normalizedAttribute.startsWith("on") ||
+      (!isAllowed && !isDataAttribute)
+    ) {
+      delete node.properties[attributeName];
+      continue;
+    }
+
+    if (
+      ["href", "src", "data-href"].includes(normalizedAttribute) &&
+      !isSafeUri(node.properties[attributeName], normalizedAttribute === "src")
+    ) {
+      delete node.properties[attributeName];
+    }
+  }
+
+  if (node.tagName === "a" && node.properties.target === "_blank") {
+    node.properties.rel = "noopener noreferrer";
+  }
+};
+
+const sanitizeHastTree = (node: any): void => {
+  if (!node || !Array.isArray(node.children)) return;
+
+  node.children = node.children.filter((childNode: any) => {
+    if (childNode.type === "comment") return false;
+    if (childNode.type === "element") {
+      const tagName = String(childNode.tagName || "").toLowerCase();
+      if (blockedHtmlTags.has(tagName)) return false;
+      childNode.tagName = tagName;
+      sanitizeElementAttributes(childNode);
+    }
+
+    sanitizeHastTree(childNode);
+    return true;
+  });
+};
+
+export const sanitizeRehypeTree = () => {
+  return (tree: any) => {
+    sanitizeHastTree(tree);
+  };
+};
+
+const blockedSvgTags = new Set([
+  "base",
+  "embed",
+  "foreignobject",
+  "iframe",
+  "link",
+  "meta",
+  "object",
+  "script",
+  "style",
+]);
+
+const sanitizeSvgElement = (element: globalThis.Element): void => {
+  for (const childElement of Array.from(element.children)) {
+    const tagName = childElement.tagName.toLowerCase();
+    if (blockedSvgTags.has(tagName)) {
+      childElement.remove();
+      continue;
+    }
+
+    sanitizeSvgElement(childElement);
+  }
+
+  for (const attributeName of element.getAttributeNames()) {
+    const normalizedAttribute = attributeName.toLowerCase();
+    const attributeValue = element.getAttribute(attributeName) || "";
+
+    if (
+      normalizedAttribute.startsWith("on") ||
+      normalizedAttribute === "style" ||
+      (["href", "xlink:href", "src"].includes(normalizedAttribute) &&
+        !isSafeUri(attributeValue))
+    ) {
+      element.removeAttribute(attributeName);
+    }
+  }
+};
+
+export const sanitizeSvgMarkup = (svgData: string): string => {
+  if (!svgData || typeof svgData !== "string") return "";
+  if (
+    typeof DOMParser === "undefined" ||
+    typeof XMLSerializer === "undefined"
+  ) {
+    return "";
+  }
+
+  const svgDocument = new DOMParser().parseFromString(
+    svgData,
+    "image/svg+xml",
+  );
+  if (svgDocument.querySelector("parsererror")) return "";
+
+  const svgElement = svgDocument.documentElement;
+  if (svgElement.tagName.toLowerCase() !== "svg") return "";
+
+  sanitizeSvgElement(svgElement);
+  return new XMLSerializer().serializeToString(svgElement);
+};
+
 const markdownProcessor = unified()
   .use(remarkParse)
   .use(remarkGfm)
@@ -775,6 +975,7 @@ const markdownProcessor = unified()
       });
     };
   })
+  .use(sanitizeRehypeTree)
   .use(rehypeStringify);
 
 export const convertMarkdownToHtml = (markdown: string): string => {

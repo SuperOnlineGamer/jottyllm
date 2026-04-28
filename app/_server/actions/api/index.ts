@@ -1,5 +1,6 @@
 "use server";
 
+import { randomBytes } from "crypto";
 import { USERS_FILE } from "@/app/_consts/files";
 import { readJsonFile, writeJsonFile } from "../file";
 import { getCurrentUser } from "@/app/_server/actions/users";
@@ -22,10 +23,7 @@ export const generateApiKey = async (): Promise<Result<string>> => {
     }
 
     const prefix = "ck_";
-    const randomBytes = Array.from({ length: 32 }, () =>
-      Math.floor(Math.random() * 16).toString(16)
-    ).join("");
-    const newApiKey = prefix + randomBytes;
+    const newApiKey = prefix + randomBytes(32).toString("hex");
 
     users[userIndex].apiKey = newApiKey;
 

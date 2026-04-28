@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Sun03Icon, GibbousMoonIcon } from "hugeicons-react";
 import { useTranslations } from "next-intl";
+import { sanitizeSvgMarkup } from "@/app/_utils/markdown-utils";
 
 interface DrawioRendererProps {
   svgData: string;
@@ -16,9 +17,14 @@ export const DrawioRenderer = ({
   className = "",
 }: DrawioRendererProps) => {
   const [themeMode, setThemeMode] = useState(initialTheme);
+  const [sanitizedSvgData, setSanitizedSvgData] = useState("");
   const t = useTranslations();
 
-  if (!svgData) {
+  useEffect(() => {
+    setSanitizedSvgData(sanitizeSvgMarkup(svgData));
+  }, [svgData]);
+
+  if (!sanitizedSvgData) {
     return (
       <div
         className={`border border-border rounded p-4 my-4 text-center text-muted-foreground ${className}`}
@@ -57,7 +63,7 @@ export const DrawioRenderer = ({
               ? "invert(0.92) contrast(0.85) brightness(1.1) saturate(1.2)"
               : "none",
         }}
-        dangerouslySetInnerHTML={{ __html: svgData }}
+        dangerouslySetInnerHTML={{ __html: sanitizedSvgData }}
       />
     </div>
   );

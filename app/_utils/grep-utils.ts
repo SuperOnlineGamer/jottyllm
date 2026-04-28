@@ -11,12 +11,9 @@
  * Enjoy it <3
  */
 
-import { exec } from "child_process";
-import { promisify } from "util";
+import fs from "fs/promises";
 import path from "path";
 import yaml from "js-yaml";
-
-const execAsync = promisify(exec);
 
 export interface GrepFileResult {
   filePath: string;
@@ -31,29 +28,94 @@ export interface GrepMetadataResult {
   metadata: Record<string, any>;
 }
 
+const collectMarkdownFiles = async (
+  dir: string,
+  filePaths: string[] = [],
+): Promise<string[]> => {
+  const entries = await fs.readdir(dir, { withFileTypes: true });
+
+  await Promise.all(
+    entries.map(async (entry) => {
+      const entryPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        await collectMarkdownFiles(entryPath, filePaths);
+        return;
+      }
+
+      if (entry.isFile() && entry.name.endsWith(".md")) {
+        filePaths.push(entryPath);
+      }
+    }),
+  );
+
+  return filePaths.sort((leftPath, rightPath) =>
+    leftPath.localeCompare(rightPath),
+  );
+};
+
+const toGrepFileResult = (dir: string, filePath: string): GrepFileResult => {
+  const relativePath = path.relative(dir, filePath);
+  const parts = relativePath.split(path.sep);
+  const filename = parts.pop() || "";
+  const id = path.basename(filename, ".md");
+  const category = parts.join("/");
+
+  return { filePath, id, category };
+};
+
+const getFrontmatterText = (content: string): string | null => {
+  const lines = content.split(/\r?\n/);
+  if (lines[0]?.trim() !== "---") return null;
+
+  const endIndex = lines.findIndex(
+    (line, index) => index > 0 && line.trim() === "---",
+  );
+  if (endIndex === -1) return null;
+
+  return lines.slice(1, endIndex).join("\n");
+};
+
+const parseFrontmatter = (content: string): Record<string, unknown> | null => {
+  const frontmatterText = getFrontmatterText(content);
+  if (!frontmatterText) return null;
+
+  const parsed = yaml.load(frontmatterText);
+  if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+    return parsed as Record<string, unknown>;
+  }
+
+  return null;
+};
+
+const metadataFieldMatches = (
+  metadata: Record<string, unknown>,
+  field: string,
+  value: string,
+): boolean => {
+  const metadataValue = metadata[field];
+  if (Array.isArray(metadataValue)) {
+    return metadataValue.map(String).includes(value);
+  }
+
+  return String(metadataValue ?? "") === value;
+};
+
 export const grepFindFileByField = async (
   dir: string,
   field: string,
   value: string,
 ): Promise<GrepFileResult | null> => {
   try {
-    const escapedValue = value.replace(/['"\\]/g, "\\$&");
-    const { stdout } = await execAsync(
-      `grep -rl "^${field}: ${escapedValue}$" "${dir}" --include="*.md" 2>/dev/null | head -1 || true`,
-    );
-
-    const filePath = stdout.trim();
-    if (!filePath) {
-      return null;
+    const files = await collectMarkdownFiles(dir);
+    for (const filePath of files) {
+      const content = await fs.readFile(filePath, "utf-8");
+      const metadata = parseFrontmatter(content);
+      if (metadata && metadataFieldMatches(metadata, field, value)) {
+        return toGrepFileResult(dir, filePath);
+      }
     }
 
-    const relativePath = path.relative(dir, filePath);
-    const parts = relativePath.split(path.sep);
-    const filename = parts.pop() || "";
-    const id = path.basename(filename, ".md");
-    const category = parts.join("/");
-
-    return { filePath, id, category };
+    return null;
   } catch {
     return null;
   }
@@ -71,10 +133,7 @@ export const grepCheckUuidExists = async (
   uuid: string,
 ): Promise<boolean> => {
   try {
-    const { stdout } = await execAsync(
-      `grep -rl "uuid: ${uuid}" "${dir}" --include="*.md" 2>/dev/null || true`,
-    );
-    return stdout.trim().length > 0;
+    return (await grepFindFileByUuid(dir, uuid)) !== null;
   } catch {
     return false;
   }
@@ -86,20 +145,18 @@ export const grepFindFilesByField = async (
   value: string,
 ): Promise<GrepFileResult[]> => {
   try {
-    const escapedValue = value.replace(/['"\\]/g, "\\$&");
-    const { stdout } = await execAsync(
-      `grep -rl "^${field}: ${escapedValue}$" "${dir}" --include="*.md" 2>/dev/null || true`,
-    );
+    const files = await collectMarkdownFiles(dir);
+    const results: GrepFileResult[] = [];
 
-    const files = stdout.trim().split("\n").filter(Boolean);
-    return files.map((filePath) => {
-      const relativePath = path.relative(dir, filePath);
-      const parts = relativePath.split(path.sep);
-      const filename = parts.pop() || "";
-      const id = path.basename(filename, ".md");
-      const category = parts.join("/");
-      return { filePath, id, category };
-    });
+    for (const filePath of files) {
+      const content = await fs.readFile(filePath, "utf-8");
+      const metadata = parseFrontmatter(content);
+      if (metadata && metadataFieldMatches(metadata, field, value)) {
+        results.push(toGrepFileResult(dir, filePath));
+      }
+    }
+
+    return results;
   } catch {
     return [];
   }
@@ -109,36 +166,20 @@ export const grepExtractAllFrontmatters = async (
   dir: string,
 ): Promise<Map<string, Record<string, unknown>>> => {
   try {
-    const { stdout } = await execAsync(
-      `find "${dir}" -name "*.md" -type f -print0 | sort -z | xargs -0 awk '` +
-        `FNR==1{if(NR>1)print "ENDFILE";print "FILE:"FILENAME;in_fm=($0=="---");next}` +
-        `in_fm&&/^---$/{in_fm=0;next}in_fm{print}END{print "ENDFILE"}' 2>/dev/null || true`,
-      { maxBuffer: 50 * 1024 * 1024 },
-    );
-
     const result = new Map<string, Record<string, unknown>>();
-    let currentFile = "";
-    let currentLines: string[] = [];
+    const files = await collectMarkdownFiles(dir);
 
-    for (const line of stdout.split("\n")) {
-      if (line.startsWith("FILE:")) {
-        currentFile = line.slice(5);
-        currentLines = [];
-      } else if (line === "ENDFILE") {
-        if (currentFile && currentLines.length > 0) {
-          try {
-            const parsed = yaml.load(currentLines.join("\n"));
-            if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-              result.set(currentFile, parsed as Record<string, unknown>);
-            }
-          } catch {}
-        }
-        currentFile = "";
-        currentLines = [];
-      } else if (currentFile) {
-        currentLines.push(line);
-      }
-    }
+    await Promise.all(
+      files.map(async (filePath) => {
+        try {
+          const content = await fs.readFile(filePath, "utf-8");
+          const metadata = parseFrontmatter(content);
+          if (metadata) {
+            result.set(filePath, metadata);
+          }
+        } catch {}
+      }),
+    );
 
     return result;
   } catch {
@@ -150,20 +191,8 @@ export const grepExtractFrontmatter = async (
   filePath: string,
 ): Promise<Record<string, unknown> | null> => {
   try {
-    const { stdout } = await execAsync(
-      `sed -n '1{/^---$/!q}; 2,/^---$/{/^---$/q;p}' "${filePath}" 2>/dev/null || true`,
-    );
-
-    const yamlContent = stdout.trim();
-    if (!yamlContent) {
-      return null;
-    }
-
-    const parsed = yaml.load(yamlContent);
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      return parsed as Record<string, unknown>;
-    }
-    return null;
+    const content = await fs.readFile(filePath, "utf-8");
+    return parseFrontmatter(content);
   } catch {
     return null;
   }
@@ -173,19 +202,8 @@ export const grepListAllFiles = async (
   dir: string,
 ): Promise<GrepFileResult[]> => {
   try {
-    const { stdout } = await execAsync(
-      `find "${dir}" -name "*.md" -type f 2>/dev/null || true`,
-    );
-
-    const files = stdout.trim().split("\n").filter(Boolean);
-    return files.map((filePath) => {
-      const relativePath = path.relative(dir, filePath);
-      const parts = relativePath.split(path.sep);
-      const filename = parts.pop() || "";
-      const id = path.basename(filename, ".md");
-      const category = parts.join("/");
-      return { filePath, id, category };
-    });
+    const files = await collectMarkdownFiles(dir);
+    return files.map((filePath) => toGrepFileResult(dir, filePath));
   } catch {
     return [];
   }
@@ -217,23 +235,17 @@ export const grepExtractField = async (
   field: string,
 ): Promise<string | null> => {
   try {
-    const { stdout } = await execAsync(
-      `grep -m1 "^${field}:" "${filePath}" 2>/dev/null | sed 's/^${field}: *//' || true`,
-    );
-
-    const value = stdout.trim();
-    if (!value) {
+    const metadata = await grepExtractFrontmatter(filePath);
+    const value = metadata?.[field];
+    if (value === undefined || value === null) {
       return null;
     }
 
-    if (value.startsWith('"') && value.endsWith('"')) {
-      return value.slice(1, -1);
-    }
-    if (value.startsWith("'") && value.endsWith("'")) {
-      return value.slice(1, -1);
+    if (Array.isArray(value)) {
+      return value.map(String).join(", ");
     }
 
-    return value;
+    return String(value);
   } catch {
     return null;
   }
@@ -248,31 +260,27 @@ export const grepSearchContent = async (
   pattern: string,
 ): Promise<GrepSearchResult[]> => {
   try {
-    const { stdout } = await execAsync(
-      `grep -rli "${pattern}" "${dir}" --include="*.md" 2>/dev/null || true`,
-    );
+    const files = await collectMarkdownFiles(dir);
+    const normalizedPattern = pattern.toLowerCase();
+    const results: GrepSearchResult[] = [];
 
-    const files = stdout.trim().split("\n").filter(Boolean);
+    for (const filePath of files) {
+      const content = await fs.readFile(filePath, "utf-8");
+      const normalizedContent = content.toLowerCase();
+      if (!normalizedContent.includes(normalizedPattern)) {
+        continue;
+      }
 
-    const results = await Promise.all(
-      files.map(async (filePath) => {
-        const relativePath = path.relative(dir, filePath);
-        const parts = relativePath.split(path.sep);
-        const filename = parts.pop() || "";
-        const id = path.basename(filename, ".md");
-        const category = parts.join("/");
+      const matchLine =
+        content
+          .split(/\r?\n/)
+          .find((line) => line.toLowerCase().includes(normalizedPattern)) || "";
 
-        let matchLine = "";
-        try {
-          const { stdout: matchOut } = await execAsync(
-            `grep -im1 "${pattern}" "${filePath}" 2>/dev/null || true`,
-          );
-          matchLine = matchOut.trim();
-        } catch {}
-
-        return { filePath, id, category, matchLine };
-      }),
-    );
+      results.push({
+        ...toGrepFileResult(dir, filePath),
+        matchLine: matchLine.trim(),
+      });
+    }
 
     return results;
   } catch {
@@ -304,10 +312,16 @@ export const grepExtractExcerpt = async (
 ): Promise<string> => {
   try {
     const cap = length + EXCERPT_BUFFER;
-    const { stdout } = await execAsync(
-      `sed '1{/^---$/!{p;d}}; /^---$/,/^---$/d' "${filePath}" 2>/dev/null | head -c ${cap} || true`,
-    );
-    return fullCodeBlock(stdout, length);
+    const content = await fs.readFile(filePath, "utf-8");
+    const lines = content.split(/\r?\n/);
+    const endIndex =
+      lines[0]?.trim() === "---"
+        ? lines.findIndex((line, index) => index > 0 && line.trim() === "---")
+        : -1;
+    const contentWithoutFrontmatter =
+      endIndex === -1 ? content : lines.slice(endIndex + 1).join("\n");
+
+    return fullCodeBlock(contentWithoutFrontmatter.slice(0, cap), length);
   } catch {
     return "";
   }

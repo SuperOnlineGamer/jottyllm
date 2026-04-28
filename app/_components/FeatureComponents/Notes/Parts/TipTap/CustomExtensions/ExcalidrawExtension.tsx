@@ -9,6 +9,7 @@ import { Sun03Icon, GibbousMoonIcon } from "hugeicons-react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { ConfirmModal } from "@/app/_components/GlobalComponents/Modals/ConfirmationModals/ConfirmModal";
+import { sanitizeSvgMarkup } from "@/app/_utils/markdown-utils";
 
 const Excalidraw = dynamic(
   async () => (await import("@excalidraw/excalidraw")).Excalidraw,
@@ -97,7 +98,7 @@ export const ExcalidrawNodeView = ({
 
       updateAttributes({
         diagramData: JSON.stringify(sceneData),
-        svgData: svgString,
+        svgData: sanitizeSvgMarkup(svgString),
       });
 
       setIsEditing(false);
@@ -193,7 +194,7 @@ export const ExcalidrawNodeView = ({
                     ? "invert(0.92) contrast(0.85) brightness(1.1) saturate(1.2)"
                     : "none",
               }}
-              dangerouslySetInnerHTML={{ __html: node.attrs.svgData || "" }}
+              dangerouslySetInnerHTML={{ __html: sanitizeSvgMarkup(node.attrs.svgData || "") }}
             />
           </>
         ) : (

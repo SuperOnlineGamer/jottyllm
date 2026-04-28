@@ -2,8 +2,6 @@
 
 import path from "path";
 import fs from "fs/promises";
-import { exec } from "child_process";
-import { promisify } from "util";
 import { Item } from "@/app/_types";
 import { CHECKLISTS_FOLDER } from "@/app/_consts/checklists";
 import { ChecklistsTypes } from "@/app/_types/enums";
@@ -13,16 +11,31 @@ import { createNotificationForUser } from "@/app/_server/actions/notifications";
 import { getUsersWithAccess } from "@/app/_server/actions/sharing";
 import { broadcast } from "@/app/_server/ws/broadcast";
 
-const _execAsync = promisify(exec);
-
 let _isRunning = false;
 
 const _findFilesWithReminders = async (rootDir: string): Promise<string[]> => {
   try {
-    const { stdout } = await _execAsync(
-      `grep -rl "reminder:" "${rootDir}" --include="*.md" 2>/dev/null || true`,
+    const files: string[] = [];
+    const entries = await fs.readdir(rootDir, { withFileTypes: true });
+
+    await Promise.all(
+      entries.map(async (entry) => {
+        const entryPath = path.join(rootDir, entry.name);
+        if (entry.isDirectory()) {
+          files.push(...(await _findFilesWithReminders(entryPath)));
+          return;
+        }
+
+        if (!entry.isFile() || !entry.name.endsWith(".md")) return;
+
+        const content = await fs.readFile(entryPath, "utf-8");
+        if (content.includes("reminder:")) {
+          files.push(entryPath);
+        }
+      }),
     );
-    return stdout.trim().split("\n").filter(Boolean);
+
+    return files;
   } catch {
     return [];
   }

@@ -178,7 +178,9 @@ vi.mock("unist-util-visit", () => ({
 }));
 
 vi.mock("@/app/_utils/markdown-utils", () => ({
+  sanitizeRehypeTree: vi.fn().mockImplementation(() => (tree: any) => tree),
   sanitizeMarkdown: vi.fn().mockImplementation((content: string) => content),
+  sanitizeSvgMarkup: vi.fn().mockImplementation((content: string) => content),
   convertMarkdownToHtml: vi
     .fn()
     .mockImplementation((content: string) => content),

@@ -9,12 +9,12 @@ import { readJsonFile, writeJsonFile } from "../file";
 import { Result, User } from "@/app/_types";
 import { removeAllSessionsForUser } from "../session";
 import fs from "fs/promises";
-import { createHash } from "crypto";
 import { ItemTypes } from "@/app/_types/enums";
 import { getFormData } from "@/app/_utils/global-utils";
 import { logUserEvent } from "@/app/_server/actions/log";
 import { getUserIndex } from "./helpers";
 import { getUserByUsername, getCurrentUser } from "./queries";
+import { hashPassword, verifyPassword } from "@/app/_server/actions/auth/password";
 
 export type UserUpdatePayload = {
   username?: string;
@@ -193,11 +193,9 @@ export const createUser = async (
       };
     }
 
-    const hashedPassword = createHash("sha256").update(password).digest("hex");
-
     const newUser: User = {
       username,
-      passwordHash: hashedPassword,
+      passwordHash: hashPassword(password),
       isAdmin,
       createdAt: new Date().toISOString(),
       lastLogin: new Date().toISOString(),
@@ -275,10 +273,7 @@ export const deleteAccount = async (
       return { success: false, error: "User not found" };
     }
 
-    const passwordHash = createHash("sha256")
-      .update(confirmPassword)
-      .digest("hex");
-    if (userRecord.passwordHash !== passwordHash) {
+    if (!verifyPassword(confirmPassword, userRecord.passwordHash)) {
       return { success: false, error: "Incorrect password" };
     }
 
@@ -339,18 +334,12 @@ export const updateProfile = async (
           };
         }
 
-        const currentPasswordHash = createHash("sha256")
-          .update(currentPassword)
-          .digest("hex");
-
-        if (userRecord.passwordHash !== currentPasswordHash) {
+        if (!verifyPassword(currentPassword, userRecord.passwordHash)) {
           return { success: false, error: "Current password is incorrect" };
         }
       }
 
-      updates.passwordHash = createHash("sha256")
-        .update(newPassword)
-        .digest("hex");
+      updates.passwordHash = hashPassword(newPassword);
     }
 
     if (Object.keys(updates).length === 0) {
@@ -444,9 +433,7 @@ export const updateUser = async (
           error: "Password must be at least 6 characters long",
         };
       }
-      updates.passwordHash = createHash("sha256")
-        .update(password)
-        .digest("hex");
+      updates.passwordHash = hashPassword(password);
     }
 
     const result = await _updateUserCore(targetUsername, updates);

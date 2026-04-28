@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import mermaid from "mermaid";
 import { useTranslations } from "next-intl";
 import { ConfirmModal } from "@/app/_components/GlobalComponents/Modals/ConfirmationModals/ConfirmModal";
+import { sanitizeSvgMarkup } from "@/app/_utils/markdown-utils";
 
 const getCSSVariable = (variable: string): string => {
   if (typeof window === "undefined") return "";
@@ -78,7 +79,7 @@ export const MermaidNodeView = ({
         const id = `mermaid-${Math.random().toString(36).substring(2, 11)}`;
         const { svg } = await mermaid.render(id, node.attrs.content);
         if (containerRef.current) {
-          containerRef.current.innerHTML = svg;
+          containerRef.current.innerHTML = sanitizeSvgMarkup(svg);
         }
       } catch (err: any) {
         setError(err.message || "Invalid Mermaid syntax");

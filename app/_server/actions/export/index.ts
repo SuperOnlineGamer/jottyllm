@@ -4,6 +4,7 @@ import archiver from "archiver";
 import * as fs from "fs";
 import fsp from "fs/promises";
 import path from "path";
+import { randomBytes } from "crypto";
 import { ExportResult, ExportProgress } from "@/app/_types";
 import { DATA_DIR, USERS_FILE, EXPORT_TEMP_DIR } from "@/app/_consts/files";
 import { getAllLists } from "@/app/_server/actions/checklist";
@@ -24,6 +25,10 @@ let exportProgress: ExportProgress = {
 
 const updateProgress = (progress: number, message: string) => {
   exportProgress = { progress, message };
+};
+
+const createExportFilename = (prefix: string): string => {
+  return `${prefix}_${Date.now()}_${randomBytes(16).toString("hex")}.zip`;
 };
 
 export const getExportProgress = async (): Promise<ExportProgress> => {
@@ -91,7 +96,7 @@ export const exportAllChecklistsNotes = async (): Promise<ExportResult> => {
     const tempExportPath = path.join(
       process.cwd(),
       EXPORT_TEMP_DIR,
-      `all_checklists_notes_${Date.now()}.zip`,
+      createExportFilename("all_checklists_notes"),
     );
     const tempContentDir = path.join(
       process.cwd(),
@@ -182,7 +187,7 @@ export const exportUserChecklistsNotes = async (
     const tempExportPath = path.join(
       process.cwd(),
       EXPORT_TEMP_DIR,
-      `${username}_content_${Date.now()}.zip`,
+      createExportFilename(`${username}_content`),
     );
     const tempUserContentDir = path.join(
       process.cwd(),
@@ -267,7 +272,7 @@ export const exportAllUsersData = async (): Promise<ExportResult> => {
     const tempExportPath = path.join(
       process.cwd(),
       EXPORT_TEMP_DIR,
-      `all_users_data_${Date.now()}.zip`,
+      createExportFilename("all_users_data"),
     );
     const tempUserDir = path.join(
       process.cwd(),
@@ -317,7 +322,7 @@ export const exportWholeDataFolder = async (): Promise<ExportResult> => {
     const tempExportPath = path.join(
       process.cwd(),
       EXPORT_TEMP_DIR,
-      `whole_data_folder_${Date.now()}.zip`,
+      createExportFilename("whole_data_folder"),
     );
 
     await ensureDir(path.join(process.cwd(), EXPORT_TEMP_DIR));

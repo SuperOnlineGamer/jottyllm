@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import mermaid from "mermaid";
 import { useTranslations } from "next-intl";
+import { sanitizeSvgMarkup } from "@/app/_utils/markdown-utils";
 
 interface MermaidRendererProps {
   code: string;
@@ -93,7 +94,7 @@ export const MermaidRenderer = ({
         const id = `mermaid-view-${Math.random().toString(36).substring(2, 11)}`;
         const { svg } = await mermaid.render(id, code);
         if (containerRef.current) {
-          containerRef.current.innerHTML = svg;
+          containerRef.current.innerHTML = sanitizeSvgMarkup(svg);
         }
       } catch (err: any) {
         setError(err.message || "Invalid Mermaid syntax");

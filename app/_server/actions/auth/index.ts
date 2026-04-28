@@ -2,7 +2,7 @@
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { createHash, randomBytes } from "crypto";
+import { randomBytes } from "crypto";
 import path from "path";
 import { lock, unlock } from "proper-lockfile";
 import {
@@ -31,6 +31,7 @@ import {
   getMfaPendingCookieName,
 } from "@/app/_utils/env-utils";
 import { ldapLogin } from "./ldap";
+import { hashPassword, needsPasswordRehash, verifyPassword } from "./password";
 
 interface User {
   username: string;
@@ -43,10 +44,6 @@ interface User {
   nextAllowedLoginAttempt?: string;
   mfaEnabled?: boolean;
 }
-
-const hashPassword = (password: string): string => {
-  return createHash("sha256").update(password).digest("hex");
-};
 
 const _generateSessionId = (): string => randomBytes(32).toString("hex");
 
@@ -283,8 +280,17 @@ export const login = async (formData: FormData) => {
       redirect("/");
     }
 
-    if (!user || user.passwordHash !== hashPassword(password)) {
+    if (!user || !verifyPassword(password, user.passwordHash)) {
       return await _handleFailedLogin(users, username, bruteforceProtectionDisabled);
+    }
+
+    const userIndex = users.findIndex(
+      (u: User) => u.username.toLowerCase() === username.toLowerCase(),
+    );
+
+    if (userIndex !== -1 && needsPasswordRehash(users[userIndex].passwordHash)) {
+      users[userIndex].passwordHash = hashPassword(password);
+      await writeJsonFile(users, USERS_FILE);
     }
 
     if (user.mfaEnabled) {
@@ -295,9 +301,6 @@ export const login = async (formData: FormData) => {
       redirect("/auth/verify-mfa");
     }
 
-    const userIndex = users.findIndex(
-      (u: User) => u.username.toLowerCase() === username.toLowerCase(),
-    );
     if (userIndex !== -1) {
       users[userIndex].lastLogin = new Date().toISOString();
       users[userIndex].failedLoginAttempts = 0;

@@ -3,8 +3,18 @@ import fs from "fs/promises";
 import path from "path";
 import { EXPORT_TEMP_DIR } from "@/app/_consts/files";
 import { resolvePath } from "@/app/_utils/path-utils";
+import { authenticateApiKey } from "@/app/_server/actions/api";
+import { getCurrentUser } from "@/app/_server/actions/users";
 
 export const dynamic = "force-dynamic";
+
+const getAuthorizedDownloadUser = async (request: NextRequest) => {
+  const currentUser = await getCurrentUser();
+  if (currentUser) return currentUser;
+
+  const apiKey = request.headers.get("x-api-key");
+  return authenticateApiKey(apiKey || "");
+};
 
 export async function GET(
   request: NextRequest,
@@ -12,6 +22,11 @@ export async function GET(
 ) {
   const params = await props.params;
   const filename = params.filename;
+  const user = await getAuthorizedDownloadUser(request);
+  if (!user) {
+    return new NextResponse("Unauthorized", { status: 401 });
+  }
+
   const baseDir = path.resolve(process.cwd(), EXPORT_TEMP_DIR);
   const resolved = resolvePath(baseDir, filename);
   if (!resolved.ok) {

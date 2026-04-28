@@ -28,6 +28,7 @@ import { TagLinkViewComponent } from "@/app/_components/FeatureComponents/Tags/T
 import { ItemTypes } from "@/app/_types/enums";
 import { extractYamlMetadata } from "@/app/_utils/yaml-metadata-utils";
 import { decodeCategoryPath, decodeId } from "@/app/_utils/global-utils";
+import { sanitizeRehypeTree } from "@/app/_utils/markdown-utils";
 import { NoteFooterStats } from "@/app/_components/GlobalComponents/Statistics/NoteFooterStats";
 import { useTranslations } from "next-intl";
 import {
@@ -556,7 +557,7 @@ export const UnifiedMarkdownRenderer = ({
       >
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
-          rehypePlugins={[rehypeSlug, rehypeRaw]}
+          rehypePlugins={[rehypeRaw, sanitizeRehypeTree, rehypeSlug]}
           components={components}
         >
           {processedContent}

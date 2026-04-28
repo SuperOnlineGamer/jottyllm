@@ -253,6 +253,27 @@ export const writeOrderFile = async (
 
 const STAT_BATCH_SIZE = 4000;
 
+const collectMarkdownFilePaths = async (
+  dir: string,
+  filePaths: string[],
+): Promise<void> => {
+  const entries = await fs.readdir(dir, { withFileTypes: true });
+
+  await Promise.all(
+    entries.map(async (entry) => {
+      const entryPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        await collectMarkdownFilePaths(entryPath, filePaths);
+        return;
+      }
+
+      if (entry.isFile() && entry.name.endsWith(".md")) {
+        filePaths.push(entryPath);
+      }
+    }),
+  );
+};
+
 export interface FileStatsEntry {
   birthtime: Date;
   mtime: Date;
@@ -263,27 +284,8 @@ export const getAllFileStats = async (
 ): Promise<Map<string, FileStatsEntry>> => {
   const result = new Map<string, FileStatsEntry>();
   try {
-    const { spawn } = await import("child_process");
-    const paths = await new Promise<string[]>((resolve, reject) => {
-      const child = spawn("find", [dir, "-name", "*.md", "-type", "f"], {
-        stdio: ["ignore", "pipe", "ignore"],
-      });
-      const chunks: Buffer[] = [];
-      child.stdout?.on("data", (chunk: Buffer) => chunks.push(chunk));
-      child.on("error", reject);
-      child.on("close", (code) => {
-        if (code !== 0 && code !== null) {
-          resolve([]);
-          return;
-        }
-        const lines = Buffer.concat(chunks)
-          .toString("utf-8")
-          .trim()
-          .split("\n")
-          .filter(Boolean);
-        resolve(lines);
-      });
-    });
+    const paths: string[] = [];
+    await collectMarkdownFilePaths(dir, paths);
 
     for (let i = 0; i < paths.length; i += STAT_BATCH_SIZE) {
       const batch = paths.slice(i, i + STAT_BATCH_SIZE);

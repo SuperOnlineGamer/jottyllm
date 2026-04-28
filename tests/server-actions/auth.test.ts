@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { createHash } from 'crypto'
 import {
   mockCookies,
   mockRedirect,
@@ -185,6 +186,33 @@ describe('Auth Actions', () => {
         })
       )
     })
+
+    it('should store new local passwords with scrypt', async () => {
+      mockReadJsonFile.mockResolvedValue([])
+      mockFs.mkdir.mockResolvedValue(undefined)
+
+      const formData = createFormData({
+        username: 'testuser',
+        password: 'password123',
+        confirmPassword: 'password123',
+      })
+
+      try {
+        await register(formData)
+      } catch (e: any) {
+        expect(e.message).toContain('REDIRECT:/')
+      }
+
+      const usersWrite = mockWriteJsonFile.mock.calls.find(([data]) =>
+        Array.isArray(data)
+      )
+      const createdUser = usersWrite?.[0]?.[0]
+
+      expect(createdUser.passwordHash).toMatch(/^scrypt\$/)
+      expect(createdUser.passwordHash).not.toBe(
+        createHash('sha256').update('password123').digest('hex')
+      )
+    })
   })
 
   describe('login', () => {
@@ -249,6 +277,33 @@ describe('Auth Actions', () => {
 
       expect(mockLock).toHaveBeenCalled()
       expect(mockUnlock).toHaveBeenCalled()
+    })
+
+    it('should migrate legacy SHA-256 password hashes after successful login', async () => {
+      const legacyUser = {
+        ...existingUser,
+        passwordHash: createHash('sha256').update('password123').digest('hex'),
+      }
+      mockReadJsonFile.mockResolvedValue([legacyUser])
+
+      const formData = createFormData({
+        username: 'testuser',
+        password: 'password123',
+      })
+
+      try {
+        await login(formData)
+      } catch (e: any) {
+        expect(e.message).toContain('REDIRECT:/')
+      }
+
+      const userWrites = mockWriteJsonFile.mock.calls
+        .map(([data]) => data)
+        .filter((data) => Array.isArray(data))
+
+      expect(
+        userWrites.some((users) => users[0].passwordHash.startsWith('scrypt$'))
+      ).toBe(true)
     })
   })
 
