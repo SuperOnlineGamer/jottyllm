@@ -47,6 +47,8 @@ A self-hosted app for your checklists and notes.
 ## Quick nav
 
 - [Features](#features)
+- [Security Hardening](#security-hardening)
+- [Inline AI Editor Roadmap](#inline-ai-editor-roadmap)
 - [Getting Started](#getting-started)
   - [Docker Compose (Recommended)](#docker-compose)
   - [Initial Setup](#initial-setup)
@@ -73,6 +75,7 @@ A self-hosted app for your checklists and notes.
 
 - **Checklists:** Create task lists with drag & drop reordering, progress bars, and categories. Supports both simple checklists and advanced task projects with Kanban boards and time tracking.
 - **Rich Text Notes:** A clean WYSIWYG editor for your notes, powered by TipTap with full Markdown support and syntax highlighting.
+- **Inline AI Editor Roadmap:** Planned editor-native AI writing tools with admin-configured OpenAI or Ollama providers, toolbar model selection, and selection-aware bubble menu actions. See [LLM_EDITOR_PLAN.md](LLM_EDITOR_PLAN.md).
 - **Sharing:** Share checklists or notes with other users on your instance, including public sharing with shareable links.
 - **File-Based:** No database needed! Everything is stored in simple Markdown and JSON files in a single data directory.
 - **User Management:** An admin panel to create and manage user accounts with session tracking.
@@ -80,6 +83,38 @@ A self-hosted app for your checklists and notes.
 - **Encryption:** Full on PGP encryption, read more about it in [howto/ENCRYPTION.md](howto/ENCRYPTION.md)
 - **API Access:** Programmatic access to your checklists and notes via REST API with authentication.
 - **PWA** Jotty doesn't have a native app, but it's built mobile first. Once installed the PWA on your device it will feel like you installed it from the app store. There's also partial offline caching, as long as you visited a page while online Jotty will allow you to re-visit it while offline. At the moment there's no current support for offline CRUD operation.
+
+<a id="security-hardening"></a>
+
+## Security Hardening
+
+This fork includes a focused security pass across authentication, rendering, export downloads, and filesystem scanning.
+
+- Passwords now use salted `scrypt` hashes for newly created or updated local users, with automatic migration from legacy SHA-256 hashes after successful login.
+- API keys are generated with cryptographically secure randomness.
+- Export downloads require an authenticated session or valid API key.
+- Markdown-rendered raw HTML and generated diagram SVG output are sanitized before rendering.
+- Draw.io proxy target construction validates URLs before proxying requests.
+- Server-side note, checklist, and reminder scanning no longer shells out to `find`, `grep`, or `sed` for normal filesystem operations.
+
+<a id="inline-ai-editor-roadmap"></a>
+
+## Inline AI Editor Roadmap
+
+The next planned editor feature is inline LLM-assisted writing that lives inside the rich text editing flow instead of a side chat panel.
+
+Planned workflow:
+
+- Admins configure AI once from the existing settings menus.
+- OpenAI keys stay server-side through environment variables, secret files, or a server-only secret store.
+- Ollama can be configured as a local or network LLM provider with server-side URL validation.
+- Rich editor users pick the active provider and model from the top toolbar.
+- Bubble-menu actions respect the toolbar-selected provider/model and operate on the current selection.
+- AI output streams inline with preview, accept, replace, insert, retry, and cancel states.
+
+Target actions include summarizing selected text, rewriting, shortening, expanding, improving clarity, changing tone, turning selections into bullets, continuing from the cursor, and prompt-based insertion.
+
+The detailed planning and implementation checklist lives in [LLM_EDITOR_PLAN.md](LLM_EDITOR_PLAN.md).
 
 <a id="getting-started"></a>
 
