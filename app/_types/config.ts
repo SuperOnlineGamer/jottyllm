@@ -33,6 +33,36 @@ export interface CustomEmojiConfig {
   };
 }
 
+export type EditorAiProvider = "openai" | "ollama";
+
+export interface EditorAiOpenAiSettings {
+  enabled: boolean;
+  defaultModel: string;
+  keyConfigured?: boolean;
+}
+
+export interface EditorAiOllamaSettings {
+  enabled: boolean;
+  baseUrl: string;
+  defaultModel: string;
+}
+
+export interface EditorAiSettings {
+  enabled: boolean;
+  defaultProvider: EditorAiProvider;
+  temperature: number;
+  maxInputCharacters: number;
+  providers: {
+    openai: EditorAiOpenAiSettings;
+    ollama: EditorAiOllamaSettings;
+  };
+}
+
+export interface EditorAiModelSelection {
+  provider: EditorAiProvider;
+  model: string;
+}
+
 export interface AppSettings {
   appName: string;
   appDescription: string;
@@ -58,5 +88,6 @@ export interface AppSettings {
     drawioUrl?: string;
     drawioProxyEnabled?: boolean;
     historyEnabled?: boolean;
+    ai?: EditorAiSettings;
   };
 }

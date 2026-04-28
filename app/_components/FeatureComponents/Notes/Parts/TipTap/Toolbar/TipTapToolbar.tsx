@@ -27,9 +27,12 @@ import { cn } from "@/app/_utils/global-utils";
 import { ExtraItemsDropdown } from "@/app/_components/FeatureComponents/Notes/Parts/TipTap/Toolbar/ExtraItemsDropdown";
 import { PrismThemeDropdown } from "@/app/_components/FeatureComponents/Notes/Parts/TipTap/Toolbar/PrismThemeDropdown";
 import { EditorSettingsDropdown } from "@/app/_components/FeatureComponents/Notes/Parts/TipTap/Toolbar/EditorSettingsDropdown";
+import { AiActionsDropdown } from "@/app/_components/FeatureComponents/Notes/Parts/TipTap/Toolbar/AiActionsDropdown";
+import { AiModelDropdown } from "@/app/_components/FeatureComponents/Notes/Parts/TipTap/Toolbar/AiModelDropdown";
 import { useTranslations } from "next-intl";
 import { PromptModal } from "@/app/_components/GlobalComponents/Modals/ConfirmationModals/PromptModal";
 import { useAppMode } from "@/app/_providers/AppModeProvider";
+import type { EditorAiModelSelection } from "@/app/_types";
 import * as MarkdownUtils from "@/app/_utils/markdown-editor-utils";
 import { insertTextAtCursor } from "@/app/_utils/markdown-editor-utils";
 
@@ -47,6 +50,8 @@ type ToolbarProps = {
   linkRequestPending?: boolean;
   linkRequestHasSelection?: boolean;
   onLinkRequestHandled?: () => void;
+  activeAiModel?: EditorAiModelSelection | null;
+  onActiveAiModelChange?: (selection: EditorAiModelSelection) => void;
 };
 
 export const TiptapToolbar = ({
@@ -59,6 +64,8 @@ export const TiptapToolbar = ({
   linkRequestPending = false,
   linkRequestHasSelection = false,
   onLinkRequestHandled,
+  activeAiModel = null,
+  onActiveAiModelChange,
 }: ToolbarProps) => {
   const t = useTranslations();
   const { user } = useAppMode();
@@ -523,6 +530,18 @@ export const TiptapToolbar = ({
             isMarkdownMode={isMarkdownMode}
             onMarkdownChange={onMarkdownChange}
           />
+          {!isMarkdownMode && activeAiModel && (
+            <AiActionsDropdown
+              editor={editor}
+              activeAiModel={activeAiModel}
+            />
+          )}
+          {!isMarkdownMode && onActiveAiModelChange && (
+            <AiModelDropdown
+              value={activeAiModel}
+              onChange={onActiveAiModelChange}
+            />
+          )}
           <div className="w-px h-6 bg-border mx-2" />
           <ExtraItemsDropdown
             editor={editor}

@@ -2,9 +2,9 @@
 # please read https://github.com/fccview/jotty/blob/main/howto/DOCKER.md
 
 services:
-  jotty:
-    image: ghcr.io/fccview/jotty:latest
-    container_name: jotty
+  jottyllm:
+    image: jottyllm:latest
+    container_name: jottyllm
     user: "1000:1000"
     ports:
       - "1122:3000"
@@ -17,6 +17,10 @@ services:
     #platform: linux/arm64
     environment:
       - NODE_ENV=production
+      # AI editor - provide your OpenAI API key here or via OPENAI_API_KEY_FILE
+      #- OPENAI_API_KEY=sk-...
+      #- OPENAI_API_KEY_FILE=/app/config/openai-api-key.txt
+      # Ollama is configured via the Admin panel (no env var needed)
       #- HTTPS=true
       #- APP_URL=https://your-jotty-domain.com
       #- INTERNAL_API_URL=http://localhost:3000

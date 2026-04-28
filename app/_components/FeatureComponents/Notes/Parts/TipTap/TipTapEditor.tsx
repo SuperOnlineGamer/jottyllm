@@ -10,7 +10,7 @@ import {
   convertHtmlToMarkdownUnified,
 } from "@/app/_utils/markdown-utils";
 import { useShortcuts } from "@/app/_hooks/useShortcuts";
-import { TableSyntax } from "@/app/_types";
+import { EditorAiModelSelection, TableSyntax } from "@/app/_types";
 import { useSettings } from "@/app/_utils/settings-store";
 import { useAppMode } from "@/app/_providers/AppModeProvider";
 import { useFileUpload } from "@/app/_components/FeatureComponents/Notes/Parts/TipTap/EditorHooks/useFileUpload";
@@ -87,6 +87,8 @@ export const TiptapEditor = forwardRef<TiptapEditorRef, TiptapEditorProps>(
     const [linkRequestPending, setLinkRequestPending] = useState(false);
     const [linkRequestHasSelection, setLinkRequestHasSelection] =
       useState(false);
+    const [activeAiModel, setActiveAiModel] =
+      useState<EditorAiModelSelection | null>(null);
     const isInitialized = useRef(false);
     const debounceTimeoutRef = useRef<NodeJS.Timeout>(undefined);
     const originalMarkdownRef = useRef<string>(getOriginalMarkdown());
@@ -366,6 +368,8 @@ export const TiptapEditor = forwardRef<TiptapEditorRef, TiptapEditorProps>(
             linkRequestPending={linkRequestPending}
             linkRequestHasSelection={linkRequestHasSelection}
             onLinkRequestHandled={() => setLinkRequestPending(false)}
+            activeAiModel={activeAiModel}
+            onActiveAiModelChange={setActiveAiModel}
           />
         </div>
 
@@ -412,6 +416,7 @@ export const TiptapEditor = forwardRef<TiptapEditorRef, TiptapEditorProps>(
                 editor={editor}
                 isVisible={showBubbleMenu}
                 onClose={() => setShowBubbleMenu(false)}
+                activeAiModel={activeAiModel}
               />
             )}
           </>

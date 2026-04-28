@@ -56,7 +56,7 @@ COPY --from=builder /app/patches ./patches
 RUN mkdir -p /app/user_patches && chown -R 1000:1000 /app/scripts /app/patches /app/user_patches
 
 COPY docker-entrypoint.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+RUN sed -i 's/\r//' /usr/local/bin/docker-entrypoint.sh && chmod +x /usr/local/bin/docker-entrypoint.sh
 
 EXPOSE 3000
 

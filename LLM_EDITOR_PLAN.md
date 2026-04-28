@@ -209,26 +209,26 @@ System prompts should be strict and editor-focused:
 
 ### Phase 1: Settings And Provider Foundation
 
-- [ ] Extend app settings types with `editor.ai` configuration.
-- [ ] Add default AI settings in config loading and updating.
-- [ ] Add admin editor settings UI for enabling AI providers.
-- [ ] Add OpenAI key configured status without exposing the key.
-- [ ] Add Ollama base URL/model settings and connectivity test.
-- [ ] Add server-side provider abstraction.
-- [ ] Add OpenAI streaming provider.
-- [ ] Add Ollama streaming provider.
-- [ ] Add provider metadata route for toolbar model discovery.
-- [ ] Add authenticated editor streaming route.
+- [x] Extend app settings types with `editor.ai` configuration.
+- [x] Add default AI settings in config loading and updating.
+- [x] Add admin editor settings UI for enabling AI providers.
+- [x] Add OpenAI key configured status without exposing the key.
+- [x] Add Ollama base URL/model settings and connectivity test.
+- [x] Add server-side provider abstraction.
+- [x] Add OpenAI streaming provider.
+- [x] Add Ollama streaming provider.
+- [x] Add provider metadata route for toolbar model discovery.
+- [x] Add authenticated editor streaming route.
 
 ### Phase 2: Rich Text Editor MVP
 
-- [ ] Add toolbar AI model/provider dropdown.
-- [ ] Keep toolbar provider/model state in `TipTapEditor.tsx`.
-- [ ] Pass active provider/model into the bubble menu.
-- [ ] Add bubble action menu for selected text.
-- [ ] Implement `rewrite selection` as the first end-to-end action.
-- [ ] Stream output into an inline preview.
-- [ ] Add accept, replace, retry, and cancel controls.
+- [x] Add toolbar AI model/provider dropdown.
+- [x] Keep toolbar provider/model state in `TipTapEditor.tsx`.
+- [x] Pass active provider/model into the bubble menu.
+- [x] Add bubble action menu for selected text.
+- [x] Implement `rewrite selection` as the first end-to-end action.
+- [x] Stream output into an inline preview.
+- [ ] Add full accept, replace, retry, and cancel controls.
 
 ### Phase 3: Expanded Actions
 

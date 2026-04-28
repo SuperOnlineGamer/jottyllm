@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Button } from "@/app/_components/GlobalComponents/Buttons/Button";
+import { Dropdown } from "@/app/_components/GlobalComponents/Dropdowns/Dropdown";
 import { Input } from "@/app/_components/GlobalComponents/FormElements/Input";
 import { Toggle } from "@/app/_components/GlobalComponents/FormElements/Toggle";
 import { ConfirmModal } from "@/app/_components/GlobalComponents/Modals/ConfirmationModals/ConfirmModal";
@@ -12,7 +13,9 @@ import {
   updateAppSettings,
 } from "@/app/_server/actions/config";
 import { deleteAllRepos } from "@/app/_server/actions/history";
+import { normalizeEditorAiSettings } from "@/app/_utils/ai-settings-utils";
 import { useTranslations } from "next-intl";
+import type { EditorAiProvider, EditorAiSettings } from "@/app/_types";
 
 export const EditorSettingsTab = () => {
   const t = useTranslations();
@@ -22,6 +25,8 @@ export const EditorSettingsTab = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [showDisableHistoryModal, setShowDisableHistoryModal] = useState(false);
+  const [openaiApiKey, setOpenaiApiKey] = useState("");
+  const [testingProvider, setTestingProvider] = useState<EditorAiProvider | null>(null);
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -58,6 +63,7 @@ export const EditorSettingsTab = () => {
               typeof result.data.editor?.historyEnabled === "boolean"
                 ? result.data.editor?.historyEnabled
                 : false,
+            ai: normalizeEditorAiSettings(result.data.editor?.ai),
           };
           setSettings({
             ...result.data,
@@ -121,6 +127,117 @@ export const EditorSettingsTab = () => {
     setHasChanges(true);
   };
 
+  const handleAiSettingsChange = (
+    updater: (aiSettings: EditorAiSettings) => EditorAiSettings
+  ) => {
+    if (!settings) return;
+
+    setSettings((prev) => {
+      if (!prev) return null;
+      const aiSettings = normalizeEditorAiSettings(prev.editor.ai);
+      return {
+        ...prev,
+        editor: {
+          ...prev.editor,
+          ai: updater(aiSettings),
+        },
+      };
+    });
+    setHasChanges(true);
+  };
+
+  const handleAiProviderToggleChange = (
+    provider: EditorAiProvider,
+    value: boolean
+  ) => {
+    handleAiSettingsChange((aiSettings) => ({
+      ...aiSettings,
+      providers: {
+        ...aiSettings.providers,
+        [provider]: {
+          ...aiSettings.providers[provider],
+          enabled: value,
+        },
+      },
+    }));
+  };
+
+  const handleAiProviderInputChange = (
+    provider: EditorAiProvider,
+    field: "defaultModel" | "baseUrl",
+    value: string
+  ) => {
+    handleAiSettingsChange((aiSettings) => ({
+      ...aiSettings,
+      providers: {
+        ...aiSettings.providers,
+        [provider]: {
+          ...aiSettings.providers[provider],
+          [field]: value,
+        },
+      },
+    }));
+  };
+
+  const handleAiNumberChange = (
+    field: "temperature" | "maxInputCharacters",
+    value: string
+  ) => {
+    handleAiSettingsChange((aiSettings) => ({
+      ...aiSettings,
+      [field]: Number(value),
+    }));
+  };
+
+  const handleOpenAiKeyChange = (value: string) => {
+    setOpenaiApiKey(value);
+    setHasChanges(true);
+  };
+
+  const handleTestAiProvider = async (provider: EditorAiProvider) => {
+    if (!settings) return;
+
+    setTestingProvider(provider);
+    try {
+      const aiSettings = normalizeEditorAiSettings(settings.editor.ai);
+      const response = await fetch("/api/ai/providers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          provider === "openai"
+            ? {
+              provider,
+              openaiApiKey: openaiApiKey.trim() || undefined,
+            }
+            : {
+              provider,
+              baseUrl: aiSettings.providers.ollama.baseUrl,
+            }
+        ),
+      });
+      const result = await response.json();
+
+      if (!response.ok || !result.ok) {
+        throw new Error(result.message || result.error || t("admin.aiConnectionFailed"));
+      }
+
+      showToast({
+        type: "success",
+        title: t("admin.aiConnectionSuccessful"),
+        message: result.message || t("admin.aiConnectionSuccessfulDescription"),
+      });
+    } catch (error) {
+      showToast({
+        type: "error",
+        title: t("admin.aiConnectionFailed"),
+        message:
+          error instanceof Error ? error.message : t("admin.unknownErrorOccurred"),
+      });
+    } finally {
+      setTestingProvider(null);
+    }
+  };
+
   const handleSave = async () => {
     if (!settings) return;
 
@@ -155,9 +272,25 @@ export const EditorSettingsTab = () => {
           formData.append(key, String(value));
         }
       });
+      if (openaiApiKey.trim()) {
+        formData.append("openaiApiKey", openaiApiKey.trim());
+      }
 
       const result = await updateAppSettings(formData);
       if (result.success) {
+        if (openaiApiKey.trim()) {
+          handleAiSettingsChange((aiSettings) => ({
+            ...aiSettings,
+            providers: {
+              ...aiSettings.providers,
+              openai: {
+                ...aiSettings.providers.openai,
+                keyConfigured: true,
+              },
+            },
+          }));
+          setOpenaiApiKey("");
+        }
         showToast({
           type: "success",
           title: t("common.success"),
@@ -188,6 +321,8 @@ export const EditorSettingsTab = () => {
   };
 
   if (!settings) return;
+
+  const aiSettings = normalizeEditorAiSettings(settings.editor.ai);
 
   return (
     <div className="space-y-6">
@@ -357,6 +492,209 @@ export const EditorSettingsTab = () => {
                       handleToggleChange("drawioProxyEnabled", checked)
                     }
                   />
+                </div>
+              </div>
+
+              <div className="border border-border rounded-jotty p-4 space-y-4">
+                <div className="flex items-center justify-between gap-4">
+                  <label htmlFor="aiEnabled" className="space-y-1 cursor-pointer">
+                    <div className="text-md lg:text-sm font-medium">
+                      {t("admin.aiEditorAssistance")}
+                    </div>
+                    <p className="text-md lg:text-xs text-muted-foreground">
+                      {t("admin.aiEditorAssistanceDescription")}
+                    </p>
+                  </label>
+                  <Toggle
+                    id="aiEnabled"
+                    checked={aiSettings.enabled}
+                    onCheckedChange={(checked) =>
+                      handleAiSettingsChange((current) => ({
+                        ...current,
+                        enabled: checked,
+                      }))
+                    }
+                  />
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-3">
+                  <label className="space-y-2">
+                    <span className="text-md lg:text-sm font-medium">
+                      {t("admin.aiDefaultProvider")}
+                    </span>
+                    <Dropdown
+                      value={aiSettings.defaultProvider}
+                      onChange={(value) =>
+                        handleAiSettingsChange((current) => ({
+                          ...current,
+                          defaultProvider: value as EditorAiProvider,
+                        }))
+                      }
+                      options={[
+                        { id: "openai", name: "OpenAI" },
+                        { id: "ollama", name: "Ollama" },
+                      ]}
+                    />
+                  </label>
+
+                  <Input
+                    id="aiTemperature"
+                    type="number"
+                    label={t("admin.aiTemperature")}
+                    value={String(aiSettings.temperature)}
+                    min="0"
+                    max="2"
+                    onChange={(e) =>
+                      handleAiNumberChange("temperature", e.target.value)
+                    }
+                    description={t("admin.aiTemperatureDescription")}
+                  />
+
+                  <Input
+                    id="aiMaxInputCharacters"
+                    type="number"
+                    label={t("admin.aiMaxInputCharacters")}
+                    value={String(aiSettings.maxInputCharacters)}
+                    min="500"
+                    max="50000"
+                    onChange={(e) =>
+                      handleAiNumberChange("maxInputCharacters", e.target.value)
+                    }
+                    description={t("admin.aiMaxInputCharactersDescription")}
+                  />
+                </div>
+
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <div className="border border-border rounded-jotty p-4 space-y-4">
+                    <div className="flex items-center justify-between gap-4">
+                      <label htmlFor="openaiEnabled" className="space-y-1 cursor-pointer">
+                        <div className="text-md lg:text-sm font-medium">
+                          {t("admin.aiOpenAiProvider")}
+                        </div>
+                        <p className="text-md lg:text-xs text-muted-foreground">
+                          {t("admin.aiOpenAiProviderDescription")}
+                        </p>
+                      </label>
+                      <Toggle
+                        id="openaiEnabled"
+                        checked={aiSettings.providers.openai.enabled}
+                        onCheckedChange={(checked) =>
+                          handleAiProviderToggleChange("openai", checked)
+                        }
+                      />
+                    </div>
+
+                    <Input
+                      id="openaiDefaultModel"
+                      type="text"
+                      label={t("admin.aiDefaultModel")}
+                      value={aiSettings.providers.openai.defaultModel}
+                      onChange={(e) =>
+                        handleAiProviderInputChange(
+                          "openai",
+                          "defaultModel",
+                          e.target.value,
+                        )
+                      }
+                      placeholder="gpt-4o-mini"
+                    />
+
+                    <Input
+                      id="openaiApiKey"
+                      type="password"
+                      label={t("admin.aiOpenAiApiKey")}
+                      value={openaiApiKey}
+                      onChange={(e) => handleOpenAiKeyChange(e.target.value)}
+                      placeholder={
+                        aiSettings.providers.openai.keyConfigured
+                          ? t("admin.aiOpenAiKeyConfiguredPlaceholder")
+                          : "sk-..."
+                      }
+                      description={
+                        openaiApiKey.trim()
+                          ? t("admin.aiOpenAiKeyWillBeSaved")
+                          : aiSettings.providers.openai.keyConfigured
+                            ? t("admin.aiOpenAiKeyConfigured")
+                            : t("admin.aiOpenAiKeyMissing")
+                      }
+                      autoComplete="off"
+                    />
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleTestAiProvider("openai")}
+                      disabled={testingProvider !== null}
+                    >
+                      {testingProvider === "openai"
+                        ? t("admin.aiTestingConnection")
+                        : t("admin.aiTestConnection")}
+                    </Button>
+                  </div>
+
+                  <div className="border border-border rounded-jotty p-4 space-y-4">
+                    <div className="flex items-center justify-between gap-4">
+                      <label htmlFor="ollamaEnabled" className="space-y-1 cursor-pointer">
+                        <div className="text-md lg:text-sm font-medium">
+                          {t("admin.aiOllamaProvider")}
+                        </div>
+                        <p className="text-md lg:text-xs text-muted-foreground">
+                          {t("admin.aiOllamaProviderDescription")}
+                        </p>
+                      </label>
+                      <Toggle
+                        id="ollamaEnabled"
+                        checked={aiSettings.providers.ollama.enabled}
+                        onCheckedChange={(checked) =>
+                          handleAiProviderToggleChange("ollama", checked)
+                        }
+                      />
+                    </div>
+
+                    <Input
+                      id="ollamaBaseUrl"
+                      type="text"
+                      label={t("admin.aiOllamaBaseUrl")}
+                      value={aiSettings.providers.ollama.baseUrl}
+                      onChange={(e) =>
+                        handleAiProviderInputChange(
+                          "ollama",
+                          "baseUrl",
+                          e.target.value,
+                        )
+                      }
+                      placeholder="http://localhost:11434"
+                      description={t("admin.aiOllamaBaseUrlDescription")}
+                    />
+
+                    <Input
+                      id="ollamaDefaultModel"
+                      type="text"
+                      label={t("admin.aiDefaultModel")}
+                      value={aiSettings.providers.ollama.defaultModel}
+                      onChange={(e) =>
+                        handleAiProviderInputChange(
+                          "ollama",
+                          "defaultModel",
+                          e.target.value,
+                        )
+                      }
+                      placeholder="llama3.1"
+                    />
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleTestAiProvider("ollama")}
+                      disabled={testingProvider !== null}
+                    >
+                      {testingProvider === "ollama"
+                        ? t("admin.aiTestingConnection")
+                        : t("admin.aiTestConnection")}
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>

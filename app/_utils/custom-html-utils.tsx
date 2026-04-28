@@ -16,10 +16,6 @@ export const customHtmlMarks: CustomHtmlMarkDefinition[] = [
     attributesToPreserve: ["style"],
   },
   {
-    name: "underline",
-    tag: "u",
-  },
-  {
     name: "kbd",
     tag: "kbd",
     classes:

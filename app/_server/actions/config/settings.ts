@@ -7,6 +7,12 @@ import { getCurrentUser, isAdmin } from "../users";
 import { revalidatePath, revalidateTag } from "next/cache";
 import { MAX_FILE_SIZE } from "@/app/_consts/files";
 import { logAudit } from "@/app/_server/actions/log";
+import { DEFAULT_EDITOR_AI_SETTINGS } from "@/app/_consts/ai";
+import { normalizeEditorAiSettings } from "@/app/_utils/ai-settings-utils";
+import {
+  isOpenAiKeyConfigured,
+  saveOpenAiApiKey,
+} from "@/app/_server/ai/secrets";
 
 const DATA_SETTINGS_PATH = path.join(process.cwd(), "data", "settings.json");
 const CONFIG_SETTINGS_PATH = path.join(
@@ -38,6 +44,7 @@ export const getSettings = async () => {
       enableBilateralLinks: true,
       drawioProxyEnabled: false,
       historyEnabled: false,
+      ai: DEFAULT_EDITOR_AI_SETTINGS,
     },
   };
 
@@ -63,6 +70,7 @@ export const getSettings = async () => {
       settings.editor = {
         ...defaultSettings.editor,
         ...settings.editor,
+        ai: normalizeEditorAiSettings(settings.editor.ai),
       };
     }
 
@@ -112,6 +120,7 @@ export const getAppSettings = async (): Promise<Result<AppSettings>> => {
             enableTableToolbar: true,
             enableBilateralLinks: true,
             drawioProxyEnabled: false,
+            ai: DEFAULT_EDITOR_AI_SETTINGS,
           },
         };
       }
@@ -136,8 +145,24 @@ export const getAppSettings = async (): Promise<Result<AppSettings>> => {
         enableTableToolbar: true,
         enableBilateralLinks: true,
         drawioProxyEnabled: false,
+        ai: DEFAULT_EDITOR_AI_SETTINGS,
       };
     }
+
+    const normalizedAiSettings = normalizeEditorAiSettings(settings.editor.ai);
+    settings.editor = {
+      ...settings.editor,
+      ai: {
+        ...normalizedAiSettings,
+        providers: {
+          ...normalizedAiSettings.providers,
+          openai: {
+            ...normalizedAiSettings.providers.openai,
+            keyConfigured: await isOpenAiKeyConfigured(),
+          },
+        },
+      },
+    };
 
     return { success: true, data: settings };
   } catch (error) {
@@ -208,6 +233,7 @@ export const updateAppSettings = async (
       enableBubbleMenu: true,
       enableTableToolbar: true,
       enableBilateralLinks: true,
+      ai: DEFAULT_EDITOR_AI_SETTINGS,
     };
 
     const editorData = formData.get("editor") as string;
@@ -217,6 +243,16 @@ export const updateAppSettings = async (
       } catch (error) {
         console.warn("Failed to parse editor settings, using defaults");
       }
+    }
+
+    editorSettings = {
+      ...editorSettings,
+      ai: normalizeEditorAiSettings(editorSettings.ai),
+    };
+
+    const openaiApiKey = (formData.get("openaiApiKey") as string) || "";
+    if (openaiApiKey.trim()) {
+      await saveOpenAiApiKey(openaiApiKey);
     }
 
     const settings: AppSettings = {

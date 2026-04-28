@@ -72,6 +72,11 @@ export type {
   CustomThemeConfig,
   CustomEmojiConfig,
   AppSettings,
+  EditorAiProvider,
+  EditorAiOpenAiSettings,
+  EditorAiOllamaSettings,
+  EditorAiSettings,
+  EditorAiModelSelection,
 } from "./config";
 
 export type {
