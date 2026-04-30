@@ -270,10 +270,16 @@ export const parseNoteContent = (
   encrypted?: boolean;
   encryptionMethod?: "pgp" | "xchacha";
   tags?: string[];
+  reminders?: any[];
+  linkedTasks?: any[];
+  comments?: any[];
 } => {
   const { metadata, contentWithoutMetadata } = extractYamlMetadata(rawContent);
 
   const tags = Array.isArray(metadata.tags) ? metadata.tags : undefined;
+  const reminders = Array.isArray(metadata.reminders) ? metadata.reminders : undefined;
+  const linkedTasks = Array.isArray(metadata.linkedTasks) ? metadata.linkedTasks : undefined;
+  const comments = Array.isArray(metadata.comments) ? metadata.comments : undefined;
 
   if (metadata.title) {
     return {
@@ -283,6 +289,9 @@ export const parseNoteContent = (
       encrypted: metadata.encrypted || false,
       encryptionMethod: metadata.encryptionMethod,
       tags,
+      reminders,
+      linkedTasks,
+      comments,
     };
   }
 
@@ -295,5 +304,8 @@ export const parseNoteContent = (
     encrypted: metadata.encrypted || false,
     encryptionMethod: metadata.encryptionMethod,
     tags,
+    reminders,
+    linkedTasks,
+    comments,
   };
 };

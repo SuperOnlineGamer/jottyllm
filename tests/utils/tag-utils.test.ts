@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import {
   normalizeTag,
   getAncestorTags,
@@ -14,6 +14,39 @@ import {
   getChildTags,
   normalizeTagColorOverrides,
 } from "@/app/_utils/tag-utils";
+import {
+  matchesNoteSearchQuery,
+  parseSearchQuery,
+} from "@/app/_utils/search-query-utils";
+import {
+  applyNoteTemplate,
+  getAvailableNoteTemplates,
+} from "@/app/_utils/note-template-utils";
+import { normalizeEditorAiSettings } from "@/app/_utils/ai-settings-utils";
+import { createOpenAiProvider } from "@/app/_server/ai/providers/openai";
+
+const originalFetch = globalThis.fetch;
+
+const createOpenAiStreamResponse = () => {
+  const encoder = new TextEncoder();
+
+  return new Response(
+    new ReadableStream({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode('data: {"choices":[{"delta":{"content":"ok"}}]}\n\n'),
+        );
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        controller.close();
+      },
+    }),
+    { status: 200 },
+  );
+};
+
+afterEach(() => {
+  globalThis.fetch = originalFetch;
+});
 
 describe("Tag Utils", () => {
   describe("normalizeTag", () => {
@@ -523,6 +556,207 @@ describe("Tag Utils", () => {
       const children = getChildTags(index, "nonexistent");
 
       expect(children).toEqual([]);
+    });
+  });
+
+  describe("Search Query Utils", () => {
+    it("should parse text, phrases, and structured filters", () => {
+      const query = parseSearchQuery(
+        'meeting "budget review" tag:work category:"Team Notes" updated:2026-04-01..2026-04-30 color:emerald',
+      );
+
+      expect(query.textTerms).toEqual(["meeting"]);
+      expect(query.phrases).toEqual(["budget review"]);
+      expect(query.tags).toEqual(["work"]);
+      expect(query.categories).toEqual(["Team Notes"]);
+      expect(query.colors).toEqual(["emerald"]);
+      expect(query.updated).toEqual({
+        from: "2026-04-01T00:00:00.000Z",
+        to: "2026-04-30T23:59:59.999Z",
+      });
+      expect(query.hasStructuredFilters).toBe(true);
+    });
+
+    it("should match note metadata and unencrypted content", () => {
+      const query = parseSearchQuery('"launch plan" tag:work created:2026-04-30');
+      const note = {
+        title: "Project",
+        content: "The launch plan is ready.",
+        category: "Work",
+        tags: ["work/project"],
+        createdAt: "2026-04-30T12:00:00.000Z",
+        updatedAt: "2026-04-30T12:00:00.000Z",
+      };
+
+      expect(matchesNoteSearchQuery(note, query)).toBe(true);
+    });
+
+    it("should not search encrypted note body content", () => {
+      const query = parseSearchQuery('"secret body"');
+      const note = {
+        title: "Visible title",
+        content: "secret body",
+        encrypted: true,
+      };
+
+      expect(matchesNoteSearchQuery(note, query)).toBe(false);
+    });
+
+    it("should match note reminders by status and due date", () => {
+      const query = parseSearchQuery("reminder:pending due:2026-04-30");
+      const note = {
+        title: "Invoice follow-up",
+        content: "Call the vendor",
+        reminders: [
+          {
+            id: "reminder-1",
+            dueAt: "2026-04-30T18:04:00.000Z",
+            status: "pending" as const,
+            createdAt: "2026-04-30T12:00:00.000Z",
+          },
+        ],
+      };
+
+      expect(matchesNoteSearchQuery(note, query)).toBe(true);
+      expect(matchesNoteSearchQuery(note, parseSearchQuery("reminder:done"))).toBe(false);
+    });
+  });
+
+  describe("Note Template Utils", () => {
+    it("should expand variables in selected templates", () => {
+      const result = applyNoteTemplate("daily-log", {
+        title: "Daily Log",
+        category: "Journal",
+        username: "testuser",
+        now: new Date("2026-04-30T14:30:00.000Z"),
+      });
+
+      expect(result.title).toBe("Daily Log - 2026-04-30");
+      expect(result.content).toContain("# Daily Log - 2026-04-30");
+      expect(result.tags).toEqual(["daily"]);
+    });
+
+    it("should merge admin and user templates while honoring hidden optional templates", () => {
+      const templates = getAvailableNoteTemplates({
+        adminTemplates: [
+          {
+            id: "admin-required",
+            name: "Required Admin",
+            content: "# Required",
+            scope: "admin",
+            required: true,
+          },
+          {
+            id: "admin-optional",
+            name: "Optional Admin",
+            content: "# Optional",
+            scope: "admin",
+          },
+        ],
+        userTemplates: [
+          {
+            id: "user-weekly",
+            name: "Weekly Review",
+            titleTemplate: "Weekly - {{date}}",
+            content: "# {{title}}",
+            scope: "user",
+            tags: ["review"],
+          },
+        ],
+        hiddenTemplateIds: ["admin-optional", "admin-required"],
+      });
+
+      expect(templates.some((template) => template.id === "admin-required")).toBe(true);
+      expect(templates.some((template) => template.id === "admin-optional")).toBe(false);
+      expect(templates.some((template) => template.id === "user-weekly")).toBe(true);
+    });
+
+    it("should apply custom templates from a merged template collection", () => {
+      const templates = getAvailableNoteTemplates({
+        userTemplates: [
+          {
+            id: "user-weekly",
+            name: "Weekly Review",
+            titleTemplate: "Weekly - {{date}}",
+            content: "# {{title}}\n\nOwner: {{username}}",
+            scope: "user",
+            tags: ["review"],
+          },
+        ],
+      });
+
+      const result = applyNoteTemplate(
+        "user-weekly",
+        {
+          title: "Review",
+          username: "testuser",
+          now: new Date("2026-04-30T14:30:00.000Z"),
+        },
+        templates,
+      );
+
+      expect(result.title).toBe("Weekly - 2026-04-30");
+      expect(result.content).toContain("Owner: testuser");
+      expect(result.tags).toEqual(["review"]);
+    });
+  });
+
+  describe("AI Settings Utils", () => {
+    it("should preserve runtime OpenAI key configured status", () => {
+      const settings = normalizeEditorAiSettings({
+        providers: {
+          openai: {
+            enabled: true,
+            defaultModel: "gpt-4o-mini",
+            keyConfigured: true,
+          },
+          ollama: {
+            enabled: false,
+            baseUrl: "http://localhost:11434",
+            defaultModel: "llama3.1",
+          },
+        },
+      });
+
+      expect(settings.providers.openai.keyConfigured).toBe(true);
+    });
+  });
+
+  describe("OpenAI Provider", () => {
+    it("should omit temperature for GPT-5 nano chat completions", async () => {
+      const fetchMock = vi.fn().mockResolvedValue(createOpenAiStreamResponse());
+      globalThis.fetch = fetchMock;
+
+      const completion = createOpenAiProvider("test-key").streamCompletion({
+        model: "gpt-5-nano",
+        temperature: 0.4,
+        systemPrompt: "System",
+        userPrompt: "User",
+      });
+
+      await completion.next();
+
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+      expect(body.model).toBe("gpt-5-nano");
+      expect(body.temperature).toBeUndefined();
+    });
+
+    it("should keep configured temperature for regular OpenAI chat models", async () => {
+      const fetchMock = vi.fn().mockResolvedValue(createOpenAiStreamResponse());
+      globalThis.fetch = fetchMock;
+
+      const completion = createOpenAiProvider("test-key").streamCompletion({
+        model: "gpt-4o-mini",
+        temperature: 0.4,
+        systemPrompt: "System",
+        userPrompt: "User",
+      });
+
+      await completion.next();
+
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+      expect(body.model).toBe("gpt-4o-mini");
+      expect(body.temperature).toBe(0.4);
     });
   });
 });

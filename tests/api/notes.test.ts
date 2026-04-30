@@ -12,7 +12,7 @@ import {
 } from "./setup"
 
 import { GET, POST } from "@/app/api/notes/route"
-import { PUT, DELETE } from "@/app/api/notes/[noteId]/route"
+import { GET as GET_NOTE, PUT, DELETE } from "@/app/api/notes/[noteId]/route"
 
 describe("Notes API", () => {
   beforeEach(() => {
@@ -62,6 +62,120 @@ describe("Notes API", () => {
       expect(data.notes[0].category).toBe("Work")
     })
 
+    it("should filter notes with structured query syntax", async () => {
+      const mockNotes = [
+        {
+          id: "1",
+          uuid: "uuid-1",
+          title: "Launch Plan",
+          content: "Budget review and launch milestones",
+          category: "Work/Projects",
+          tags: ["work/project"],
+          owner: "testuser",
+          createdAt: "2026-04-30T10:00:00.000Z",
+          updatedAt: "2026-04-30T10:00:00.000Z",
+        },
+        {
+          id: "2",
+          uuid: "uuid-2",
+          title: "Personal Note",
+          content: "Groceries",
+          category: "Personal",
+          tags: ["home"],
+          owner: "testuser",
+          createdAt: "2026-04-29T10:00:00.000Z",
+          updatedAt: "2026-04-29T10:00:00.000Z",
+        },
+      ]
+      mockGetUserNotes.mockResolvedValue({ success: true, data: mockNotes })
+
+      const request = createMockRequest(
+        "GET",
+        'http://localhost:3000/api/notes?q="budget review" tag:work updated:2026-04-30',
+      )
+      const response = await GET(request)
+      const data = await getResponseJson(response)
+
+      expect(response.status).toBe(200)
+      expect(data.notes).toHaveLength(1)
+      expect(data.notes[0].title).toBe("Launch Plan")
+      expect(data.notes[0].tags).toEqual(["work/project"])
+    })
+
+    it("should not match encrypted note body content in API search", async () => {
+      const mockNotes = [
+        {
+          id: "1",
+          uuid: "uuid-1",
+          title: "Encrypted",
+          content: "private phrase",
+          encrypted: true,
+          category: "Work",
+          owner: "testuser",
+        },
+      ]
+      mockGetUserNotes.mockResolvedValue({ success: true, data: mockNotes })
+
+      const request = createMockRequest(
+        "GET",
+        'http://localhost:3000/api/notes?q="private phrase"',
+      )
+      const response = await GET(request)
+      const data = await getResponseJson(response)
+
+      expect(response.status).toBe(200)
+      expect(data.notes).toHaveLength(0)
+    })
+
+    it("should filter notes by reminder query parameters", async () => {
+      const mockNotes = [
+        {
+          id: "1",
+          uuid: "uuid-1",
+          title: "Call vendor",
+          content: "Follow up on invoice",
+          category: "Work",
+          owner: "testuser",
+          reminders: [
+            {
+              id: "reminder-1",
+              dueAt: "2026-04-30T18:04:00.000Z",
+              status: "pending",
+              createdAt: "2026-04-30T12:00:00.000Z",
+            },
+          ],
+        },
+        {
+          id: "2",
+          uuid: "uuid-2",
+          title: "Done reminder",
+          content: "Already handled",
+          category: "Work",
+          owner: "testuser",
+          reminders: [
+            {
+              id: "reminder-2",
+              dueAt: "2026-04-30T18:04:00.000Z",
+              status: "done",
+              createdAt: "2026-04-30T12:00:00.000Z",
+            },
+          ],
+        },
+      ]
+      mockGetUserNotes.mockResolvedValue({ success: true, data: mockNotes })
+
+      const request = createMockRequest(
+        "GET",
+        "http://localhost:3000/api/notes?reminder=pending&due=2026-04-30",
+      )
+      const response = await GET(request)
+      const data = await getResponseJson(response)
+
+      expect(response.status).toBe(200)
+      expect(data.notes).toHaveLength(1)
+      expect(data.notes[0].title).toBe("Call vendor")
+    })
+
     it("should return 401 for unauthorized requests", async () => {
       mockAuthenticateApiKey.mockResolvedValue(null)
 
@@ -101,6 +215,33 @@ describe("Notes API", () => {
       expect(data.data.title).toBe("Test Note - API")
     })
 
+    it("should pass tags when creating a note", async () => {
+      const newNote = {
+        id: "new-note",
+        uuid: "new-uuid",
+        title: "Tagged Note",
+        content: "This is tagged",
+        category: "Work",
+        tags: ["anythingllm", "work"],
+        owner: "testuser",
+      }
+      mockCreateNote.mockResolvedValue({ success: true, data: newNote })
+
+      const request = createMockRequest("POST", "http://localhost:3000/api/notes", {
+        title: "Tagged Note",
+        content: "This is tagged",
+        category: "Work",
+        tags: ["anythingllm", "work"],
+      })
+      const response = await POST(request)
+      const data = await getResponseJson(response)
+      const formData = mockCreateNote.mock.calls[0][0] as FormData
+
+      expect(response.status).toBe(200)
+      expect(formData.get("tags")).toBe('["anythingllm","work"]')
+      expect(data.data.tags).toEqual(["anythingllm", "work"])
+    })
+
     it("should return 400 when title is missing", async () => {
       const request = createMockRequest("POST", "http://localhost:3000/api/notes", {
         content: "No title provided",
@@ -127,6 +268,39 @@ describe("Notes API", () => {
   })
 
   describe("PUT /api/notes/:id", () => {
+    it("should return note metadata for a single note", async () => {
+      const existingNote = {
+        id: "note-1",
+        uuid: "uuid-1",
+        title: "Workflow Note",
+        content: "Content",
+        category: "Work",
+        tags: ["agent"],
+        reminders: [
+          {
+            id: "reminder-1",
+            dueAt: "2026-04-30T18:04:00.000Z",
+            status: "pending",
+            createdAt: "2026-04-30T12:00:00.000Z",
+          },
+        ],
+        comments: [{ id: "comment-1", body: "Check this", author: "testuser", createdAt: "2026-04-30T12:00:00.000Z" }],
+        linkedTasks: [],
+        owner: "testuser",
+        updatedAt: "2026-04-30T12:00:00.000Z",
+      }
+      mockGetUserNotes.mockResolvedValue({ success: true, data: [existingNote] })
+
+      const request = createMockRequest("GET", "http://localhost:3000/api/notes/uuid-1")
+      const response = await GET_NOTE(request, { params: Promise.resolve({ noteId: "uuid-1" }) })
+      const data = await getResponseJson(response)
+
+      expect(response.status).toBe(200)
+      expect(data.data.tags).toEqual(["agent"])
+      expect(data.data.reminders).toHaveLength(1)
+      expect(data.data.comments).toHaveLength(1)
+    })
+
     it("should update a note", async () => {
       const existingNote = {
         id: "note-1",
@@ -184,6 +358,64 @@ describe("Notes API", () => {
 
       expect(response.status).toBe(200)
       expect(data.success).toBe(true)
+    })
+
+    it("should return 409 when expectedUpdatedAt is stale", async () => {
+      const existingNote = {
+        id: "note-1",
+        uuid: "uuid-1",
+        title: "Original Title",
+        content: "Original content",
+        category: "Work",
+        owner: "testuser",
+        updatedAt: "2026-04-30T12:00:00.000Z",
+      }
+
+      mockGetUserNotes.mockResolvedValue({ success: true, data: [existingNote] })
+
+      const request = createMockRequest("PUT", "http://localhost:3000/api/notes/uuid-1", {
+        content: "Stale update",
+        expectedUpdatedAt: "2026-04-30T11:59:00.000Z",
+      })
+      const response = await PUT(request, { params: Promise.resolve({ noteId: "uuid-1" }) })
+      const data = await getResponseJson(response)
+
+      expect(response.status).toBe(409)
+      expect(data.error).toBe("Note has changed since it was read")
+      expect(data.currentUpdatedAt).toBe("2026-04-30T12:00:00.000Z")
+      expect(mockUpdateNote).not.toHaveBeenCalled()
+    })
+
+    it("should pass tags when updating a note", async () => {
+      const existingNote = {
+        id: "note-1",
+        uuid: "uuid-1",
+        title: "Original Title",
+        content: "Original content",
+        category: "Work",
+        tags: ["old"],
+        owner: "testuser",
+        updatedAt: "2026-04-30T12:00:00.000Z",
+      }
+      const updatedNote = {
+        ...existingNote,
+        tags: ["anythingllm", "organized"],
+      }
+
+      mockGetUserNotes.mockResolvedValue({ success: true, data: [existingNote] })
+      mockUpdateNote.mockResolvedValue({ success: true, data: updatedNote })
+
+      const request = createMockRequest("PUT", "http://localhost:3000/api/notes/uuid-1", {
+        tags: ["anythingllm", "organized"],
+        expectedUpdatedAt: "2026-04-30T12:00:00.000Z",
+      })
+      const response = await PUT(request, { params: Promise.resolve({ noteId: "uuid-1" }) })
+      const data = await getResponseJson(response)
+      const formData = mockUpdateNote.mock.calls[0][0] as FormData
+
+      expect(response.status).toBe(200)
+      expect(formData.get("tags")).toBe('["anythingllm","organized"]')
+      expect(data.data.tags).toEqual(["anythingllm", "organized"])
     })
 
     it("should return 404 for non-existent note", async () => {

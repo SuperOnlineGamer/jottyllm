@@ -1,7 +1,59 @@
 import { Modes } from "../_types/enums";
+import type { NoteTemplate } from "../_types";
 
 export const NOTES_FOLDER = Modes.NOTES;
 export const DEPRECATED_DOCS_FOLDER = Modes.DEPRECATED_DOCS;
+
+export const NOTE_TEMPLATES: NoteTemplate[] = [
+  {
+    id: "blank",
+    nameKey: "notes.templateBlank",
+    descriptionKey: "notes.templateBlankDescription",
+    content: "",
+    scope: "system",
+    required: true,
+  },
+  {
+    id: "daily-log",
+    nameKey: "notes.templateDailyLog",
+    descriptionKey: "notes.templateDailyLogDescription",
+    titleTemplate: "Daily Log - {{date}}",
+    content:
+      "# {{title}}\n\n## Focus\n\n- \n\n## Notes\n\n\n## Wins\n\n- \n\n## Follow-ups\n\n- [ ] ",
+    tags: ["daily"],
+    scope: "system",
+  },
+  {
+    id: "meeting-notes",
+    nameKey: "notes.templateMeetingNotes",
+    descriptionKey: "notes.templateMeetingNotesDescription",
+    titleTemplate: "Meeting - {{date}}",
+    content:
+      "# {{title}}\n\n**Date:** {{date}}\n**Time:** {{time}}\n**Category:** {{category}}\n\n## Attendees\n\n- \n\n## Agenda\n\n- \n\n## Notes\n\n\n## Decisions\n\n- \n\n## Action Items\n\n- [ ] ",
+    tags: ["meeting"],
+    scope: "system",
+  },
+  {
+    id: "project-brief",
+    nameKey: "notes.templateProjectBrief",
+    descriptionKey: "notes.templateProjectBriefDescription",
+    titleTemplate: "Project Brief - {{title}}",
+    content:
+      "# {{title}}\n\n## Objective\n\n\n## Background\n\n\n## Scope\n\n### In\n\n- \n\n### Out\n\n- \n\n## Milestones\n\n- [ ] \n\n## Risks\n\n- \n\n## Links\n\n- ",
+    tags: ["project"],
+    scope: "system",
+  },
+  {
+    id: "research-note",
+    nameKey: "notes.templateResearchNote",
+    descriptionKey: "notes.templateResearchNoteDescription",
+    titleTemplate: "Research - {{title}}",
+    content:
+      "# {{title}}\n\n## Question\n\n\n## Sources\n\n- \n\n## Findings\n\n- \n\n## Quotes\n\n> \n\n## Open Questions\n\n- ",
+    tags: ["research"],
+    scope: "system",
+  },
+];
 
 export const QUOTES = [
   "Nothing... a whole lot of nothing.",

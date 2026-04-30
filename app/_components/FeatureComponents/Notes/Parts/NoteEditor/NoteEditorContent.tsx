@@ -30,6 +30,7 @@ interface NoteEditorContentProps {
     isDirty: boolean,
   ) => void;
   noteId?: string;
+  noteFileId?: string;
   noteCategory?: string;
   encrypted?: boolean;
   onOpenDecryptModal?: () => void;
@@ -43,6 +44,7 @@ export const NoteEditorContent = ({
   editorContent,
   onEditorContentChange,
   noteId,
+  noteFileId,
   noteCategory,
   encrypted,
   onOpenDecryptModal,
@@ -170,6 +172,8 @@ export const NoteEditorContent = ({
           tableSyntax={user?.tableSyntax}
           notes={notes}
           checklists={checklists}
+          noteId={noteFileId || noteId}
+          noteCategory={noteCategory}
         />
       ) : (
         <>

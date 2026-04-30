@@ -518,7 +518,8 @@ Creates a new note for the authenticated user.
 {
   "title": "My New Note",
   "content": "Note content here...",
-  "category": "Personal"
+  "category": "Personal",
+  "tags": ["anythingllm", "ideas"]
 }
 ```
 
@@ -527,6 +528,7 @@ Creates a new note for the authenticated user.
 - `title` (required): The title of the note
 - `content` (optional): The content of the note in markdown format (defaults to empty string)
 - `category` (optional): Category for the note (defaults to "Uncategorized")
+- `tags` (optional): Array of tag names, or a comma-separated string. Tags are normalized and stored in note frontmatter.
 
 **Response:**
 
@@ -538,6 +540,11 @@ Creates a new note for the authenticated user.
     "title": "My New Note",
     "content": "Note content here...",
     "category": "Personal",
+    "tags": ["anythingllm", "ideas"],
+    "reminders": [],
+    "linkedTasks": [],
+    "comments": [],
+    "encrypted": false,
     "createdAt": "2024-01-01T00:00:00.000Z",
     "updatedAt": "2024-01-01T00:00:00.000Z",
     "owner": "username"
@@ -558,16 +565,29 @@ Updates an existing note for the authenticated user.
   "title": "Updated Note Title",
   "content": "Updated note content...",
   "category": "Work",
-  "originalCategory": "Personal"
+  "tags": ["project", "follow-up"],
+  "expectedUpdatedAt": "2024-01-01T00:00:00.000Z"
 }
 ```
 
 **Parameters:**
 
-- `title` (required): The updated title of the note
+- `title` (optional): The updated title of the note
 - `content` (optional): The updated content of the note in markdown format
 - `category` (optional): New category for the note (defaults to "Uncategorized")
-- `originalCategory` (optional): The original category of the note (used to locate the existing note)
+- `tags` (optional): Array of tag names, or a comma-separated string. Omit to preserve the current tag list.
+- `expectedUpdatedAt` (optional): Send the `updatedAt` value from the note you read before editing. If the note changed since then, the API returns HTTP `409` instead of overwriting newer content.
+
+You can also pass the expected timestamp as an `If-Unmodified-Since` request header. This is recommended for external agents and chat tools that read a note, transform it, then write it back.
+
+**Conflict Response:**
+
+```json
+{
+  "error": "Note has changed since it was read",
+  "currentUpdatedAt": "2024-01-01T00:05:00.000Z"
+}
+```
 
 **Response:**
 
@@ -579,12 +599,28 @@ Updates an existing note for the authenticated user.
     "title": "Updated Note Title",
     "content": "Updated note content...",
     "category": "Work",
+    "tags": ["project", "follow-up"],
+    "reminders": [],
+    "linkedTasks": [],
+    "comments": [],
+    "encrypted": false,
     "createdAt": "2024-01-01T00:00:00.000Z",
     "updatedAt": "2024-01-02T10:30:00.000Z",
     "owner": "username"
   }
 }
 ```
+
+### AnythingLLM / Agent Tool Compatibility Notes
+
+AnythingLLM custom agent skills can call Jotty directly with the API key header. A useful first skill can expose a single action parameter such as `search_notes`, `create_note`, `update_note`, `append_to_note`, `organize_note`, or `delete_note`, then call these endpoints:
+
+- `GET /api/notes?q=...` to find candidate notes. Use filters like `tag:`, `category:`, `updated:`, `reminder:`, and `due:` when possible.
+- `GET /api/notes/{noteId}` before editing so the skill has current `content`, `tags`, `category`, and `updatedAt`.
+- `PUT /api/notes/{noteId}` with `expectedUpdatedAt` for safe edits.
+- `POST /api/notes` for new notes, including optional `tags`.
+
+For destructive actions, have the AnythingLLM skill confirm intent in chat before calling `DELETE`. For encrypted notes, avoid sending decrypted content through external LLM providers unless the user explicitly asks for that behavior.
 
 ### 12. Delete Note
 
@@ -1626,6 +1662,22 @@ curl -H "x-api-key: ck_your_api_key_here" \
 ```bash
 curl -H "x-api-key: ck_your_api_key_here" \
      "https://jotty-instance.com/api/notes?q=meeting"
+```
+
+The `q` parameter supports quoted phrases and note filters:
+
+```bash
+curl -H "x-api-key: ck_your_api_key_here" \
+  "https://jotty-instance.com/api/notes?q=%22budget%20review%22%20tag:work%20updated:2026-04-01..2026-04-30"
+```
+
+Supported filters include `tag:name`, `color:name`, `category:name`, `created:YYYY-MM-DD`, `updated:YYYY-MM-DD..YYYY-MM-DD`, `reminder:pending`, `reminder:overdue`, and `due:YYYY-MM-DD`. Encrypted note body content is not searched; encrypted note titles and metadata can still match.
+
+You can also pass structured filters as separate query parameters:
+
+```bash
+curl -H "x-api-key: ck_your_api_key_here" \
+  "https://jotty-instance.com/api/notes?tag=work&color=emerald&updated=2026-04-30&reminder=pending&due=2026-04-30"
 ```
 
 ### Create a note

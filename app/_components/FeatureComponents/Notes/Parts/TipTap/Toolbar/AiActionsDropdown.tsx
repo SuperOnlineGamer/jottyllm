@@ -14,6 +14,7 @@ import { ToolbarDropdown } from "./ToolbarDropdown";
 import { convertMarkdownToHtml } from "@/app/_utils/markdown-utils";
 import { useTranslations } from "next-intl";
 import type { EditorAiModelSelection } from "@/app/_types";
+import { requestEditorAiCompletion } from "@/app/_server/actions/ai";
 
 type AiToolbarAction = "rewrite" | "summarize" | "brainstorm";
 
@@ -24,6 +25,7 @@ interface AiActionsDropdownProps {
 
 const SELECTION_ACTIONS = new Set<AiToolbarAction>(["rewrite"]);
 const HTML_TAG_PATTERN = /<\/?[a-z][\s\S]*>/i;
+const EMPTY_AI_RESPONSE_MESSAGE = "AI returned an empty response.";
 
 /**
  * @todo fccview is telling you to review this AI generated code
@@ -85,6 +87,10 @@ const getSurroundingText = (editor: Editor): string => {
  */
 const getErrorMessage = (error: unknown): string => {
   return error instanceof Error ? error.message : "AI request failed";
+};
+
+const isAbortError = (error: unknown): boolean => {
+  return error instanceof DOMException && error.name === "AbortError";
 };
 
 /**
@@ -224,7 +230,7 @@ export const AiActionsDropdown = ({
   activeAiModel,
 }: AiActionsDropdownProps) => {
   const t = useTranslations();
-  const aiAbortControllerRef = useRef<AbortController | null>(null);
+  const aiRequestSequenceRef = useRef(0);
   const editorEditableRef = useRef<boolean | null>(null);
   const [showBrainstormModal, setShowBrainstormModal] = useState(false);
   const [aiError, setAiError] = useState("");
@@ -252,7 +258,7 @@ export const AiActionsDropdown = ({
 
   useEffect(() => {
     return () => {
-      aiAbortControllerRef.current?.abort();
+      aiRequestSequenceRef.current += 1;
       unlockEditor();
     };
   }, []);
@@ -260,68 +266,50 @@ export const AiActionsDropdown = ({
   if (!activeAiModel) return null;
 
   const clearAiError = () => {
-    aiAbortControllerRef.current?.abort();
-    aiAbortControllerRef.current = null;
+    aiRequestSequenceRef.current += 1;
     setAiError("");
     setIsAiStreaming(false);
     unlockEditor();
   };
 
-  const streamAiResponse = async ({
+  const requestAiResponse = async ({
     action,
     prompt,
     selectionText,
     selectionHtml,
     surroundingText,
-    onChunk,
   }: {
     action: AiToolbarAction;
     prompt?: string;
     selectionText: string;
     selectionHtml?: string;
     surroundingText: string;
-    onChunk: (chunk: string) => void;
-  }) => {
-    const abortController = new AbortController();
-    aiAbortControllerRef.current = abortController;
+  }): Promise<string> => {
+    const requestId = aiRequestSequenceRef.current + 1;
+    aiRequestSequenceRef.current = requestId;
+    const formData = new FormData();
+    formData.append("provider", activeAiModel.provider);
+    formData.append("model", activeAiModel.model);
+    formData.append("action", action);
+    formData.append("selectionText", selectionText);
+    formData.append("surroundingText", surroundingText);
+    formData.append("outputMode", "preview");
+    if (prompt) formData.append("prompt", prompt);
+    if (selectionHtml) formData.append("selectionHtml", selectionHtml);
 
-    const response = await fetch("/api/ai/editor", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      signal: abortController.signal,
-      body: JSON.stringify({
-        provider: activeAiModel.provider,
-        model: activeAiModel.model,
-        action,
-        prompt,
-        selectionText,
-        selectionHtml,
-        surroundingText,
-        outputMode: "preview",
-      }),
-    });
-
-    if (!response.ok) {
-      const errorPayload = await response.json().catch(() => null);
-      throw new Error(errorPayload?.error || "AI request failed");
+    const result = await requestEditorAiCompletion(formData);
+    if (requestId !== aiRequestSequenceRef.current) {
+      throw new DOMException("AI request was superseded.", "AbortError");
+    }
+    if (!result.success || !result.data) {
+      throw new Error(result.error || "AI request failed");
     }
 
-    if (!response.body) {
-      throw new Error("AI request failed");
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      onChunk(decoder.decode(value, { stream: true }));
-    }
+    return result.data.text;
   };
 
   const runSummary = async () => {
-    const documentText = getDocumentText(editor);
+    const documentText = getDocumentText(editor).trim();
     setShowSummaryPanel(true);
     setSummaryText("");
     setSummaryError("");
@@ -334,22 +322,20 @@ export const AiActionsDropdown = ({
     setIsAiStreaming(true);
 
     try {
-      let generatedText = "";
-      await streamAiResponse({
+      const generatedText = await requestAiResponse({
         action: "summarize",
         selectionText: documentText,
         surroundingText: "",
-        onChunk: (chunk) => {
-          generatedText += chunk;
-          setSummaryText(generatedText);
-        },
       });
+      setSummaryText(generatedText);
+      if (!generatedText.trim()) {
+        setSummaryError(EMPTY_AI_RESPONSE_MESSAGE);
+      }
     } catch (error) {
-      if (!aiAbortControllerRef.current?.signal.aborted) {
+      if (!isAbortError(error)) {
         setSummaryError(getErrorMessage(error));
       }
     } finally {
-      aiAbortControllerRef.current = null;
       setIsAiStreaming(false);
     }
   };
@@ -368,6 +354,7 @@ export const AiActionsDropdown = ({
     const insertFrom = action === "brainstorm" ? to : from;
     let currentTo = action === "brainstorm" ? to : to;
     let generatedText = "";
+    const surroundingText = getSurroundingText(editor);
 
     setAiError("");
 
@@ -389,31 +376,29 @@ export const AiActionsDropdown = ({
     );
 
     try {
-      await streamAiResponse({
+      generatedText = await requestAiResponse({
         action,
         prompt,
         selectionText: selectedText,
         selectionHtml: selectedHtml || undefined,
-        surroundingText: getSurroundingText(editor),
-        onChunk: (chunk) => {
-          generatedText += chunk;
-
-          const previewHtml =
-            action === "brainstorm"
-              ? markdownToRichHtml(generatedText)
-              : rewriteToRichHtml(generatedText);
-          currentTo = replaceEditorContent(
-            editor,
-            insertFrom,
-            currentTo,
-            previewHtml || plainTextToHtml(t("editor.aiWriting")),
-            false,
-          );
-        },
+        surroundingText,
       });
+
+      const previewHtml =
+        action === "brainstorm"
+          ? markdownToRichHtml(generatedText)
+          : rewriteToRichHtml(generatedText);
+      currentTo = replaceEditorContent(
+        editor,
+        insertFrom,
+        currentTo,
+        previewHtml || plainTextToHtml(t("editor.aiWriting")),
+        false,
+      );
 
       if (!generatedText.trim()) {
         replaceEditorContent(editor, insertFrom, currentTo, originalHtml, false);
+        setAiError(EMPTY_AI_RESPONSE_MESSAGE);
         return;
       }
 
@@ -436,12 +421,11 @@ export const AiActionsDropdown = ({
         );
       }
     } catch (error) {
-      if (!aiAbortControllerRef.current?.signal.aborted) {
+      if (!isAbortError(error)) {
         replaceEditorContent(editor, insertFrom, currentTo, originalHtml, false);
         setAiError(getErrorMessage(error));
       }
     } finally {
-      aiAbortControllerRef.current = null;
       setIsAiStreaming(false);
       unlockEditor();
       editor.view.focus();
@@ -479,6 +463,7 @@ export const AiActionsDropdown = ({
             type="button"
             className={actionButtonClass}
             onClick={(event) => {
+              event.preventDefault();
               event.stopPropagation();
               runAiAction("rewrite");
             }}
@@ -490,6 +475,7 @@ export const AiActionsDropdown = ({
             type="button"
             className={actionButtonClass}
             onClick={(event) => {
+              event.preventDefault();
               event.stopPropagation();
               runSummary();
             }}
@@ -501,6 +487,7 @@ export const AiActionsDropdown = ({
             type="button"
             className={actionButtonClass}
             onClick={(event) => {
+              event.preventDefault();
               event.stopPropagation();
               setShowBrainstormModal(true);
             }}

@@ -307,7 +307,7 @@ export const getHistory = async (
     const filePath = path.join(
       note.category || "Uncategorized",
       `${note.id}.md`
-    );
+    ).replace(/\\/g, "/");
 
     const skip = (page - 1) * pageSize;
     const rawOutput = await git.raw([

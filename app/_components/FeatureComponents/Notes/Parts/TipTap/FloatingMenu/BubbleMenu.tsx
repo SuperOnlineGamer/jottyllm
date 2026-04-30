@@ -24,6 +24,7 @@ import { PromptModal } from "@/app/_components/GlobalComponents/Modals/Confirmat
 import { convertMarkdownToHtml } from "@/app/_utils/markdown-utils";
 import { useTranslations } from "next-intl";
 import type { EditorAiModelSelection } from "@/app/_types";
+import { requestEditorAiCompletion } from "@/app/_server/actions/ai";
 
 const HTML_TAG_PATTERN = /<\/?[a-z][\s\S]*>/i;
 
@@ -198,7 +199,7 @@ export const BubbleMenu = ({
   });
   const [targetElement, setTargetElement] = useState<HTMLElement | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  const aiAbortControllerRef = useRef<AbortController | null>(null);
+  const aiRequestSequenceRef = useRef(0);
 
   useEffect(() => {
     if (!isVisible || !menuRef.current) return;
@@ -264,7 +265,7 @@ export const BubbleMenu = ({
 
   useEffect(() => {
     return () => {
-      aiAbortControllerRef.current?.abort();
+      aiRequestSequenceRef.current += 1;
     };
   }, []);
 
@@ -309,8 +310,7 @@ export const BubbleMenu = ({
   };
 
   const cancelAiPreview = () => {
-    aiAbortControllerRef.current?.abort();
-    aiAbortControllerRef.current = null;
+    aiRequestSequenceRef.current += 1;
     setAiPreview("");
     setAiError("");
     setIsAiStreaming(false);
@@ -357,52 +357,37 @@ export const BubbleMenu = ({
     setAiError("");
     setIsAiStreaming(true);
 
-    const abortController = new AbortController();
-    aiAbortControllerRef.current = abortController;
+    const requestId = aiRequestSequenceRef.current + 1;
+    aiRequestSequenceRef.current = requestId;
 
     try {
-      const response = await fetch("/api/ai/editor", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: abortController.signal,
-        body: JSON.stringify({
-          provider: activeAiModel.provider,
-          model: activeAiModel.model,
-          action: "rewrite",
-          selectionText: selectedText,
-          selectionHtml: selectedHtml || undefined,
-          surroundingText,
-          outputMode: "preview",
-        }),
-      });
+      const formData = new FormData();
+      formData.append("provider", activeAiModel.provider);
+      formData.append("model", activeAiModel.model);
+      formData.append("action", "rewrite");
+      formData.append("selectionText", selectedText);
+      formData.append("surroundingText", surroundingText);
+      formData.append("outputMode", "preview");
+      if (selectedHtml) formData.append("selectionHtml", selectedHtml);
 
-      if (!response.ok) {
-        const errorPayload = await response.json().catch(() => null);
-        throw new Error(errorPayload?.error || "AI rewrite failed");
+      const result = await requestEditorAiCompletion(formData);
+      if (requestId !== aiRequestSequenceRef.current) {
+        throw new DOMException("AI request was superseded.", "AbortError");
+      }
+      if (!result.success || !result.data) {
+        throw new Error(result.error || "AI rewrite failed");
       }
 
-      if (!response.body) {
-        throw new Error("AI rewrite failed");
-      }
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        setAiPreview((current) => current + decoder.decode(value, { stream: true }));
-      }
+      setAiPreview(result.data.text);
     } catch (error) {
-      if (!abortController.signal.aborted) {
+      if (!(error instanceof DOMException && error.name === "AbortError")) {
         setAiPreview("");
         setAiError(error instanceof Error ? error.message : "AI rewrite failed");
       }
     } finally {
-      if (aiAbortControllerRef.current === abortController) {
-        aiAbortControllerRef.current = null;
+      if (requestId === aiRequestSequenceRef.current) {
+        setIsAiStreaming(false);
       }
-      setIsAiStreaming(false);
     }
   };
 

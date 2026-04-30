@@ -49,6 +49,7 @@ export const editorSettingsSchema = z.object({
     message: "Quick create notes must be either 'enable' or 'disable'",
   }),
   quickCreateNotesCategory: z.string().optional(),
+  quickCreateNotesTemplate: z.string().optional(),
   codeBlockStyle: z.enum(["default", "themed"], {
     message: "Code block style must be either 'default' or 'themed'",
   }),

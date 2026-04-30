@@ -1,15 +1,57 @@
 import { NextRequest, NextResponse } from "next/server";
 import { withApiAuth } from "@/app/_utils/api-utils";
-import { updateNote, deleteNote } from "@/app/_server/actions/note";
+import { getUserNotes, updateNote, deleteNote } from "@/app/_server/actions/note";
 
 export const dynamic = "force-dynamic";
+
+const appendTagsToFormData = (formData: FormData, tags: unknown) => {
+    if (tags === undefined) return;
+    formData.append("tags", Array.isArray(tags) ? JSON.stringify(tags) : String(tags));
+};
+
+const transformNoteForApi = (note: any) => ({
+    id: note?.uuid || note?.id,
+    title: note?.title,
+    category: note?.category || "Uncategorized",
+    content: note?.content || "",
+    tags: note?.tags || [],
+    reminders: note?.reminders || [],
+    linkedTasks: note?.linkedTasks || [],
+    comments: note?.comments || [],
+    encrypted: Boolean(note?.encrypted),
+    createdAt: note?.createdAt,
+    updatedAt: note?.updatedAt,
+    owner: note?.owner,
+});
+
+const getExpectedUpdatedAt = (request: NextRequest, body: any): string => {
+    const headerValue = request.headers.get("if-unmodified-since") || "";
+    return String(body?.expectedUpdatedAt || headerValue || "").trim();
+};
+
+const getApiNote = async (noteId: string, username: string) => {
+    const notes = await getUserNotes({ username });
+
+    if (!notes.success || !notes.data) {
+        return { error: "Failed to fetch notes" };
+    }
+
+    return {
+        note: notes.data.find((note: any) => note.uuid === noteId || note.id === noteId),
+    };
+};
 
 export async function GET(request: NextRequest, props: { params: Promise<{ noteId: string }> }) {
     const params = await props.params;
     return withApiAuth(request, async (user) => {
         try {
-            const { getNoteById } = await import("@/app/_server/actions/note");
-            const note = await getNoteById(params.noteId, undefined, user.username);
+            const noteResult = await getApiNote(params.noteId, user.username);
+
+            if (noteResult.error) {
+                return NextResponse.json({ error: noteResult.error }, { status: 500 });
+            }
+
+            const note = noteResult.note;
 
             if (!note) {
                 return NextResponse.json({ error: "Note not found" }, { status: 404 });
@@ -17,15 +59,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ noteI
 
             return NextResponse.json({
                 success: true,
-                data: {
-                    id: note.uuid || note.id,
-                    title: note.title,
-                    category: note.category || "Uncategorized",
-                    content: note.content,
-                    createdAt: note.createdAt,
-                    updatedAt: note.updatedAt,
-                    owner: note.owner,
-                },
+                data: transformNoteForApi(note),
             });
         } catch (error) {
             console.error("API Error:", error);
@@ -42,21 +76,28 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ noteI
     return withApiAuth(request, async (user) => {
         try {
             const body = await request.json();
-            const { title, content, category } = body;
+            const { title, content, category, tags } = body;
 
-            const { getUserNotes } = await import("@/app/_server/actions/note");
-            const notes = await getUserNotes({ username: user.username });
+            const noteResult = await getApiNote(params.noteId, user.username);
 
-            if (!notes.success || !notes.data) {
-                return NextResponse.json(
-                    { error: "Failed to fetch notes" },
-                    { status: 500 }
-                );
+            if (noteResult.error) {
+                return NextResponse.json({ error: noteResult.error }, { status: 500 });
             }
 
-            const note = notes.data.find((n) => n.uuid === params.noteId);
+            const note = noteResult.note;
             if (!note) {
                 return NextResponse.json({ error: "Note not found" }, { status: 404 });
+            }
+
+            const expectedUpdatedAt = getExpectedUpdatedAt(request, body);
+            if (expectedUpdatedAt && note.updatedAt && expectedUpdatedAt !== note.updatedAt) {
+                return NextResponse.json(
+                    {
+                        error: "Note has changed since it was read",
+                        currentUpdatedAt: note.updatedAt,
+                    },
+                    { status: 409 }
+                );
             }
 
             const formData = new FormData();
@@ -67,21 +108,14 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ noteI
             formData.append("category", category ?? note.category ?? "Uncategorized");
             formData.append("originalCategory", note.category || "Uncategorized");
             formData.append("user", user.username);
+            appendTagsToFormData(formData, tags);
 
             const result = await updateNote(formData);
             if (result.error) {
                 return NextResponse.json({ error: result.error }, { status: 400 });
             }
 
-            const transformedNote = {
-                id: result.data?.uuid || result.data?.id,
-                title: result.data?.title,
-                category: result.data?.category || "Uncategorized",
-                content: result.data?.content,
-                createdAt: result.data?.createdAt,
-                updatedAt: result.data?.updatedAt,
-                owner: result.data?.owner,
-            };
+            const transformedNote = transformNoteForApi(result.data);
 
             return NextResponse.json({ success: true, data: transformedNote });
         } catch (error) {
@@ -98,17 +132,13 @@ export async function DELETE(request: NextRequest, props: { params: Promise<{ no
     const params = await props.params;
     return withApiAuth(request, async (user) => {
         try {
-            const { getUserNotes } = await import("@/app/_server/actions/note");
-            const notes = await getUserNotes({ username: user.username });
+            const noteResult = await getApiNote(params.noteId, user.username);
 
-            if (!notes.success || !notes.data) {
-                return NextResponse.json(
-                    { error: "Failed to fetch notes" },
-                    { status: 500 }
-                );
+            if (noteResult.error) {
+                return NextResponse.json({ error: noteResult.error }, { status: 500 });
             }
 
-            const note = notes.data.find((n) => n.uuid === params.noteId);
+            const note = noteResult.note;
             if (!note) {
                 return NextResponse.json({ error: "Note not found" }, { status: 404 });
             }

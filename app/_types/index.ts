@@ -13,7 +13,17 @@ export type {
   Checklist,
 } from "./checklist";
 
-export type { Note, NoteEditorViewModel, NoteSaveOptions } from "./note";
+export type {
+  Note,
+  NoteComment,
+  NoteEditorViewModel,
+  NoteLinkedTask,
+  NoteReminder,
+  NoteSaveOptions,
+  NoteSaveState,
+  NoteTemplate,
+  NoteTemplateScope,
+} from "./note";
 
 export type {
   User,
@@ -36,6 +46,7 @@ export type {
   DefaultChecklistFilter,
   DefaultNoteFilter,
   QuickCreateNotes,
+  QuickCreateNotesTemplate,
   HideConnectionIndicator,
   CodeBlockStyle,
   ChecklistItemClickAction,

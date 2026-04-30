@@ -185,6 +185,9 @@ export const getNoteById = async (
     encrypted: parsedData.encrypted || false,
     encryptionMethod: parsedData.encryptionMethod,
     tags: parsedData.tags || [],
+    reminders: parsedData.reminders || [],
+    linkedTasks: parsedData.linkedTasks || [],
+    comments: parsedData.comments || [],
   };
 };
 

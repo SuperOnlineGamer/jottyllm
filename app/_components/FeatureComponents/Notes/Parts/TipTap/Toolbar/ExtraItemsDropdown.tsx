@@ -10,6 +10,7 @@ import {
   TextSuperscriptIcon,
   LetterSpacingIcon,
   SquareArrowDown02Icon,
+  CheckmarkSquare04Icon,
   ArrowDown01Icon,
   MoreHorizontalIcon,
 } from "hugeicons-react";
@@ -20,6 +21,13 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslations } from 'next-intl';
 import { PromptModal } from "@/app/_components/GlobalComponents/Modals/ConfirmationModals/PromptModal";
 import * as MarkdownUtils from "@/app/_utils/markdown-editor-utils";
+import { Modal } from "@/app/_components/GlobalComponents/Modals/Modal";
+import { Dropdown } from "@/app/_components/GlobalComponents/Dropdowns/Dropdown";
+import { Textarea } from "@/app/_components/GlobalComponents/FormElements/Textarea";
+import { convertNoteTextToChecklistItem } from "@/app/_server/actions/note-workflows";
+import { useToast } from "@/app/_providers/ToastProvider";
+import { useRouter } from "next/navigation";
+import type { Checklist } from "@/app/_types";
 
 interface ExtraItemsDropdownProps {
   editor: Editor;
@@ -28,6 +36,9 @@ interface ExtraItemsDropdownProps {
   onFileModalOpen: () => void;
   onTableModalOpen: () => void;
   onImageSizeModalOpen: (url: string) => void;
+  noteId?: string;
+  noteCategory?: string;
+  checklists?: Partial<Checklist>[];
 }
 
 export const ExtraItemsDropdown = ({
@@ -37,11 +48,20 @@ export const ExtraItemsDropdown = ({
   onFileModalOpen,
   onTableModalOpen,
   onImageSizeModalOpen,
+  noteId,
+  noteCategory,
+  checklists = [],
 }: ExtraItemsDropdownProps) => {
   const t = useTranslations();
+  const router = useRouter();
+  const { showToast } = useToast();
   const [isMac, setIsMac] = useState(false);
   const [showImageModal, setShowImageModal] = useState(false);
   const [showAbbreviationModal, setShowAbbreviationModal] = useState(false);
+  const [showTaskModal, setShowTaskModal] = useState(false);
+  const [taskText, setTaskText] = useState("");
+  const [selectedChecklistId, setSelectedChecklistId] = useState("");
+  const [isConvertingTask, setIsConvertingTask] = useState(false);
 
   useEffect(() => {
     setIsMac(/(Mac|iPhone|iPod|iPad)/i.test(navigator.platform));
@@ -56,6 +76,102 @@ export const ExtraItemsDropdown = ({
     if (textarea && onMarkdownChange) {
       const newContent = fn(textarea);
       onMarkdownChange(newContent);
+    }
+  };
+
+  const checklistOptions = useMemo(
+    () =>
+      checklists
+        .filter((list) => list.id && list.title)
+        .map((list) => ({
+          id: list.id!,
+          name: `${list.title}${list.category ? ` (${list.category})` : ""}`,
+        })),
+    [checklists],
+  );
+
+  const selectedChecklist = checklists.find(
+    (list) => list.id === selectedChecklistId,
+  );
+
+  const getSelectedTaskText = () => {
+    if (isMarkdownMode) {
+      const textarea = getMarkdownTextarea();
+      if (!textarea || textarea.selectionStart === textarea.selectionEnd) return "";
+      return textarea.value.slice(textarea.selectionStart, textarea.selectionEnd).trim();
+    }
+
+    const { from, to } = editor.state.selection;
+    return from === to ? "" : editor.state.doc.textBetween(from, to, " ").trim();
+  };
+
+  const openTaskModal = () => {
+    if (!noteId) {
+      showToast({
+        type: "error",
+        title: t("common.error"),
+        message: "Save the note before creating a linked task.",
+      });
+      return;
+    }
+
+    const selectedText = getSelectedTaskText();
+    if (!selectedText) {
+      showToast({
+        type: "error",
+        title: t("common.error"),
+        message: "Select note text before creating a task.",
+      });
+      return;
+    }
+
+    if (!checklistOptions.length) {
+      showToast({
+        type: "error",
+        title: t("common.error"),
+        message: "Create a checklist first, then convert note text into a task.",
+      });
+      return;
+    }
+
+    setTaskText(selectedText);
+    setSelectedChecklistId((current) => current || checklistOptions[0].id);
+    setShowTaskModal(true);
+  };
+
+  const confirmTaskConversion = async () => {
+    if (!noteId || !selectedChecklist || !taskText.trim()) return;
+
+    setIsConvertingTask(true);
+    try {
+      const formData = new FormData();
+      formData.append("noteId", noteId);
+      formData.append("noteCategory", noteCategory || "Uncategorized");
+      formData.append("checklistId", selectedChecklist.id || "");
+      formData.append("checklistCategory", selectedChecklist.category || "Uncategorized");
+      formData.append("text", taskText.trim());
+
+      const result = await convertNoteTextToChecklistItem(formData);
+      if (!result.success) {
+        throw new Error(result.error || "Failed to create linked task.");
+      }
+
+      showToast({
+        type: "success",
+        title: t("common.success"),
+        message: "Task created and linked to this note.",
+      });
+      setShowTaskModal(false);
+      setTaskText("");
+      router.refresh();
+    } catch (error) {
+      showToast({
+        type: "error",
+        title: t("common.error"),
+        message: error instanceof Error ? error.message : "Failed to create linked task.",
+      });
+    } finally {
+      setIsConvertingTask(false);
     }
   };
 
@@ -180,16 +296,27 @@ export const ExtraItemsDropdown = ({
         isActive: editor && editor.isActive("details"),
         shortcut: { code: "KeyD", modKey: true, shiftKey: true },
       },
+      {
+        icon: <CheckmarkSquare04Icon className="h-4 w-4" />,
+        label: "Create task from selection",
+        command: openTaskModal,
+      },
     ],
-    [editor, isMarkdownMode, onMarkdownChange, onFileModalOpen, onTableModalOpen, t, toggleAbbreviation, toggleDetails]
+    [editor, isMarkdownMode, onMarkdownChange, onFileModalOpen, onTableModalOpen, t, toggleAbbreviation, toggleDetails, openTaskModal]
   );
 
   const shortcuts = useMemo(
     () =>
-      items.map((item) => ({
-        ...item.shortcut,
-        handler: item.command,
-      })),
+      items.flatMap((item) =>
+        item.shortcut
+          ? [
+              {
+                ...item.shortcut,
+                handler: item.command,
+              },
+            ]
+          : [],
+      ),
     [items]
   );
 
@@ -265,6 +392,46 @@ export const ExtraItemsDropdown = ({
         placeholder="HyperText Markup Language"
         confirmText={t("common.confirm")}
       />
+
+      <Modal
+        isOpen={showTaskModal}
+        onClose={() => setShowTaskModal(false)}
+        title="Create task from selection"
+      >
+        <div className="space-y-4">
+          <Dropdown
+            value={selectedChecklistId}
+            onChange={setSelectedChecklistId}
+            options={checklistOptions}
+            className="w-full"
+            placeholder="Select checklist..."
+          />
+          <Textarea
+            id="selected-note-task-text"
+            label="Task text"
+            value={taskText}
+            onChange={(event) => setTaskText(event.target.value)}
+            rows={4}
+            minHeight="110px"
+          />
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowTaskModal(false)}
+            >
+              {t("common.cancel")}
+            </Button>
+            <Button
+              type="button"
+              onClick={confirmTaskConversion}
+              disabled={isConvertingTask || !taskText.trim() || !selectedChecklistId}
+            >
+              {isConvertingTask ? t("common.saving") : "Create task"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </>
   );
 };

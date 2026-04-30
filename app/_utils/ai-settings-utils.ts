@@ -69,7 +69,7 @@ export const normalizeEditorAiSettings = (
         defaultModel:
           settings?.providers?.openai?.defaultModel?.trim() ||
           defaults.providers.openai.defaultModel,
-        keyConfigured: false,
+        keyConfigured: Boolean(settings?.providers?.openai?.keyConfigured),
       },
       ollama: {
         enabled:

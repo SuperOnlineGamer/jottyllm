@@ -4,7 +4,7 @@
 
 Turn the current feature brainstorm into a working implementation plan for future Jotty releases. This file is meant to be updated as we complete slices, learn from the codebase, and refine priorities.
 
-The strongest near-term theme is making notes easier to retrieve, structure, and act on. The larger bets are collaboration, external integrations, richer media, and usage insights.
+The strongest near-term theme is making notes easier to retrieve, structure, and act on. The larger bets are offline/local-first editing, stronger encryption and privacy controls, AI-assisted workflows, collaboration, external integrations, richer media, and usage insights.
 
 ## Planning Principles
 
@@ -12,6 +12,8 @@ The strongest near-term theme is making notes easier to retrieve, structure, and
 - Prefer Markdown/frontmatter-compatible metadata for note features when practical.
 - Preserve self-hosted simplicity: features should work without mandatory external services.
 - Treat encrypted notes carefully. Metadata can remain searchable, but encrypted body content should not be indexed or analyzed unless the user has intentionally decrypted it in a safe client-side flow.
+- Design offline/local-first work around durable local drafts, clear sync state, and explicit conflict resolution instead of silent overwrites.
+- Keep AI assistance opt-in and privacy-aware. Automatic AI features should have visible review states and should never send encrypted note body content to a provider unless the user intentionally decrypts and requests it.
 - Ship vertical slices that are useful on their own, then expand them.
 - Keep mobile/PWA behavior in mind for every editor and filtering workflow.
 
@@ -22,6 +24,8 @@ The strongest near-term theme is making notes easier to retrieve, structure, and
 - The shortcuts guide currently documents a save shortcut, but the desired behavior needs a dedicated review so saving does not exit edit mode.
 - API docs already describe note search with `q`, category filtering, summary statistics, and export endpoints.
 - Sharing already exists for notes and checklists, which gives collaboration a permission foundation.
+- The app already has PWA/service-worker entry points, which can become the foundation for offline caching and sync status.
+- The app already supports per-note encryption paths, which gives privacy controls a real implementation base instead of a blank slate.
 - The app already includes editor/media building blocks such as TipTap, Mermaid, Draw.io, Excalidraw, file attachments, video attachment rendering, Recharts, and WebSocket dependencies.
 - The inline AI editor work is tracked separately in [LLM_EDITOR_PLAN.md](LLM_EDITOR_PLAN.md).
 
@@ -31,19 +35,23 @@ The strongest near-term theme is making notes easier to retrieve, structure, and
 
 Auto-save and manual save behavior should be tightened before expanding note workflows. If note editing is going to gain tags, templates, reminders, AI actions, and collaboration, saving needs to feel predictable first.
 
-### P1: Organization, Search, Filters, Templates, And Reminders
+### P1: Organization, Search, Filters, Templates, Reminders, And AI Suggestions
 
 These are high-impact personal knowledge features. They strengthen the core note-taking loop without requiring external accounts or heavy infrastructure.
 
-### P2: Export, Task Conversion, Settings, And Insights
+### P2: Export, Task Conversion, Offline Foundations, Settings, And Insights
 
-These make Jotty more useful as a daily system and are natural follow-ups after metadata and search are stronger.
+These make Jotty more useful as a daily system and are natural follow-ups after metadata and search are stronger. Offline editing starts here as a reliability feature, but conflict handling should be designed before it becomes broad sync.
 
-### P3: Calendar/Task Integrations And Collaboration
+### P3: Local-First Sync, Calendar/Task Integrations, And Collaboration
 
-These are valuable but need careful design because they touch permissions, sync, conflict handling, external auth, and self-hosting complexity.
+These are valuable but need careful design because they touch permissions, sync queues, conflict handling, external auth, and self-hosting complexity.
 
-### P4: Audio/Video Recording And Advanced Animated Diagrams
+### P4: Encryption Hardening, Privacy Controls, And Advanced AI Automation
+
+Important, but needs careful defaults because it affects trust, storage, and self-hosted operations. Smaller privacy fixes can move earlier when they unblock offline, sharing, AI, or export work.
+
+### P5: Audio/Video Recording And Advanced Animated Diagrams
 
 Useful later, but lower priority. Jotty already supports file/media attachments and several diagram tools, so the first step is improving those paths before building recording or animation systems.
 
@@ -54,11 +62,14 @@ Useful later, but lower priority. Jotty already supports file/media attachments 
 3. Tag/date/filter-aware search.
 4. Note templates.
 5. Note reminders and task conversion.
-6. Markdown-first export improvements.
-7. Stats and insights.
-8. Calendar/task integrations.
-9. Collaboration and comments.
-10. Rich media recording and animated graph/flow tooling.
+6. AI-assisted suggestions for summaries, tags, draft improvements, and smart reminders.
+7. Markdown-first export improvements.
+8. Offline edit queue and local-first sync foundations.
+9. Encryption and privacy controls hardening.
+10. Stats and insights.
+11. Calendar/task integrations.
+12. Collaboration and comments.
+13. Rich media recording and animated graph/flow tooling.
 
 ## Master Task List
 
@@ -69,8 +80,12 @@ Useful later, but lower priority. Jotty already supports file/media attachments 
 - [ ] Audit existing search implementation for notes, categories, tags, encrypted notes, and API parity.
 - [ ] Audit current sharing permission model before collaboration planning.
 - [x] Decide whether colored tags are global per instance, per user, or mixed with shared global defaults.
-- [ ] Decide whether templates are user-owned, admin-provided, or both.
-- [ ] Decide whether reminder metadata belongs inside note frontmatter, separate JSON indexes, or both.
+- [x] Decide whether templates are user-owned, admin-provided, or both.
+- [x] Decide whether reminder metadata belongs inside note frontmatter, separate JSON indexes, or both.
+- [ ] Audit current PWA/service-worker behavior, offline cache behavior, and browser storage options.
+- [ ] Audit current encrypted note flows, key handling, sharing behavior, and metadata exposure.
+- [ ] Decide whether local-first sync uses operation queues, note revisions, content hashes, CRDTs, or a smaller conflict prompt model.
+- [ ] Define privacy boundaries for AI features, especially encrypted notes, automatic background analysis, and provider-backed requests.
 
 ### 1. Organization And Colored Tags
 
@@ -97,9 +112,9 @@ Outcome: Notes save automatically at the configured interval, and `Ctrl+S` / `Cm
 - [x] Confirm whether the documented `Cmd/Ctrl+Shift+S` shortcut should remain, be changed, or become an alias.
 - [x] Add `Ctrl+S` / `Cmd+S` interception while editing notes.
 - [x] Ensure manual save keeps the note in edit mode.
-- [ ] Add a visible saved/saving/error state that does not interrupt writing.
-- [ ] Respect `notesAutoSaveInterval`, including a disabled state if interval `0` is supported.
-- [ ] Avoid duplicate concurrent saves by serializing or coalescing save requests.
+- [x] Add a visible saved/saving/error state that does not interrupt writing.
+- [x] Respect `notesAutoSaveInterval`, including a disabled state if interval `0` is supported.
+- [x] Avoid duplicate concurrent saves by serializing or coalescing save requests.
 - [ ] Ensure markdown and rich editor modes both save the correct current content.
 - [ ] Add tests for shortcut behavior, save-without-exit, auto-save timing, and failed save recovery.
 - [x] Update [howto/SHORTCUTS.md](howto/SHORTCUTS.md) once shortcut behavior is final.
@@ -108,39 +123,42 @@ Outcome: Notes save automatically at the configured interval, and `Ctrl+S` / `Cm
 
 Outcome: Users can search by keyword, exact phrase, tag pill, color, date, and useful custom criteria.
 
-- [ ] Inventory the existing note search API and UI behavior.
-- [ ] Define a small query grammar, such as quoted phrases, `tag:name`, `color:name`, `created:`, `updated:`, and `category:`.
-- [ ] Add a structured filter state so the UI does not depend only on raw text parsing.
-- [ ] Support exact phrase search for note titles and unencrypted note content.
-- [ ] Support tag and color filters using the new tag registry.
-- [ ] Support created/updated date ranges.
+- [x] Inventory the existing note search API and UI behavior.
+- [x] Define a small query grammar, such as quoted phrases, `tag:name`, `color:name`, `created:`, `updated:`, and `category:`.
+- [x] Add a structured filter state so the UI does not depend only on raw text parsing.
+- [x] Support exact phrase search for note titles and unencrypted note content.
+- [x] Support tag and color filters using the new tag registry.
+- [x] Support created/updated date ranges.
 - [ ] Consider priority as a first-class metadata field only if it has a strong product use case beyond colored tags.
-- [ ] Preserve existing category filtering and API compatibility.
+- [x] Preserve existing category filtering and API compatibility.
 - [ ] Document encrypted-note search limitations clearly in the UI and docs.
-- [ ] Add tests for query parsing, API results, encrypted note behavior, and combined filters.
+- [x] Add tests for query parsing, API results, encrypted note behavior, and combined filters.
 
 ### 4. Note Templates
 
 Outcome: Users can create notes from reusable structures such as meeting notes, daily logs, project briefs, and research notes.
 
-- [ ] Define template storage, likely Markdown files with frontmatter metadata.
-- [ ] Support template variables such as date, time, username, title, category, and tags.
-- [ ] Add template management UI for create/edit/delete/duplicate.
-- [ ] Add template selection to new-note creation and quick-create flows.
+- [x] Define template storage as app/user JSON records with Markdown template bodies.
+- [x] Support template variables such as date, time, username, title, category, and tags.
+- [x] Add template management UI for create/edit/delete/duplicate.
+- [x] Add template selection to new-note creation and quick-create flows.
+- [x] Add an admin instance default template.
 - [ ] Add optional default template per category or tag.
 - [ ] Ensure templates work in both rich editor and markdown mode.
 - [ ] Add import/export for templates if the storage format is stable.
-- [ ] Add tests for variable expansion and template-created notes.
+- [x] Add tests for variable expansion and merged admin/user template visibility.
+- [ ] Add tests for template-created notes.
 
 ### 5. Reminders
 
 Outcome: Users can attach reminders to notes and optionally create reminders from tags or detected keywords.
 
-- [ ] Audit existing notification and checklist/Kanban reminder behavior for reuse.
-- [ ] Define reminder storage and ownership rules.
-- [ ] Add note-level reminder metadata with due date, optional repeat rule, status, and notification preference.
-- [ ] Add reminder controls in the note editor and note metadata panel.
-- [ ] Add reminders to notes home filters and global search.
+- [x] Audit existing notification and checklist/Kanban reminder behavior for reuse.
+- [x] Define reminder storage and ownership rules.
+- [x] Add note-level reminder metadata with due date, optional repeat rule, status, and notification preference.
+- [x] Add reminder controls in the note editor and note metadata panel.
+- [x] Add reminder status and due-date filters to API/global search.
+- [ ] Add reminders to notes home filters.
 - [ ] Add optional tag-based reminder rules, such as all notes tagged `invoice` reminding after a configured delay.
 - [ ] Add optional keyword/date detection as a user-confirmed suggestion, not an automatic silent action.
 - [ ] Add in-app notifications first; browser push or email can come later.
@@ -177,9 +195,9 @@ Outcome: Users can tune new workflows without making the settings area messy.
 
 Outcome: Users can turn note content into actionable tasks with due dates and reminders.
 
-- [ ] Define the relationship between notes, checklists, Kanban tasks, and inline task list items.
-- [ ] Add a selected-text action to convert note content into a checklist item or Kanban task.
-- [ ] Preserve a backlink from created task to source note.
+- [x] Define the relationship between notes, checklists, Kanban tasks, and inline task list items.
+- [x] Add a selected-text action to convert note content into a checklist item or Kanban task.
+- [x] Preserve a backlink from created task to source note.
 - [ ] Add due date and reminder extraction as a confirmation step.
 - [ ] Add inline note indicators for linked tasks.
 - [ ] Add task status previews in note view.
@@ -204,16 +222,63 @@ Outcome: Users can understand their note-taking patterns without exposing privat
 Outcome: Shared notes can support comments and eventually live collaborative editing.
 
 - [ ] Treat this as a separate architecture project after save, tags, and search are stable.
-- [ ] Audit current sharing permissions and public-link behavior.
-- [ ] Add comments as the first collaboration slice before live multi-cursor editing.
-- [ ] Decide whether comments are stored in note frontmatter, sidecar JSON, or a shared activity log.
+- [x] Audit current sharing permissions and public-link behavior.
+- [x] Add comments as the first collaboration slice before live multi-cursor editing.
+- [x] Decide whether comments are stored in note frontmatter, sidecar JSON, or a shared activity log.
+- [x] Add note editor comments panel with create and resolve actions.
 - [ ] Add comment permissions, resolve/unresolve state, and notification hooks.
 - [ ] Add optimistic UI and conflict handling for comments.
 - [ ] Prototype live note updates with WebSockets only after comments and save conflict behavior are understood.
 - [ ] Decide whether real-time editing uses operational transforms, CRDTs, document locks, or last-write conflict prompts.
 - [ ] Add tests for permissions, comment lifecycle, concurrent updates, and shared encrypted notes.
 
-### 11. Audio, Video, And Animated Graph/Flow Support
+### 11. Offline Mode And Local-First Sync
+
+Outcome: Users can keep writing when their connection drops, then safely sync local edits when they are online again.
+
+- [ ] Audit current PWA/service worker caching, server action dependencies, API calls, and browser storage options.
+- [ ] Define a local draft store, likely IndexedDB, for note content, metadata, attachment references, and pending sync operations.
+- [ ] Add network status, local-change, and sync-failure indicators in the note editor and notes home.
+- [ ] Allow creating local notes and editing cached notes while offline.
+- [ ] Queue writes with operation IDs, note ID/UUID, category path, original `updatedAt`, content hash or revision, and user ownership context.
+- [ ] Replay queued edits in the background when online, with retry backoff and clear failure messaging.
+- [ ] Add conflict detection when the server note changed after the local edit started.
+- [ ] Add conflict resolution UI with keep mine, keep server, duplicate local copy, and Markdown compare/merge options.
+- [ ] Keep encrypted note payloads encrypted in local queues; do not persist decrypted plaintext drafts unless the user explicitly opts in.
+- [ ] Add tests for queue serialization, replay ordering, retries, conflict detection, and encrypted-note local storage behavior.
+
+### 12. Encryption And Privacy Controls
+
+Outcome: Users can understand and control how private notes, metadata, local drafts, AI actions, sharing, and exports handle sensitive content.
+
+- [ ] Audit existing PGP/XChaCha note encryption, key storage, decrypted editor lifecycle, sharing behavior, attachment handling, and export behavior.
+- [ ] Clarify the privacy model for at-rest server encryption versus end-to-end client-side encryption.
+- [ ] Add a per-note privacy panel showing encryption method, searchable metadata, AI eligibility, sharing state, export eligibility, and local offline behavior.
+- [ ] Add user defaults for encrypting new notes, locking decrypted notes after inactivity, and allowing or blocking decrypted local drafts.
+- [ ] Decide whether tags, reminders, linked tasks, and comments on encrypted notes are encrypted, metadata-only, or disabled by policy.
+- [ ] Support rotating or upgrading encrypted notes between supported encryption methods.
+- [ ] Ensure offline queues, local drafts, exports, global search, and stats all honor encrypted-note privacy boundaries.
+- [ ] Add recovery/export guidance for encrypted notes and keys.
+- [ ] Add tests for encrypted metadata boundaries, local storage behavior, sharing permissions, exports, and AI opt-in behavior.
+
+### 13. AI-Assisted Features
+
+Outcome: Users can ask Jotty for useful help without losing control over content, tags, reminders, or privacy.
+
+- [x] Add manual editor AI actions for rewrite, brainstorm, and summarize with provider calls from the server/container path.
+- [ ] Add opt-in automatic note summaries stored as metadata or a sidecar cache with a stale indicator when the note changes.
+- [ ] Add tag/pill suggestions from note title/content and the existing tag registry, with user confirmation before applying.
+- [ ] Add smart reminder suggestions from natural-language dates, task-like phrases, and follow-up language, with user confirmation of date, time, timezone, and notification behavior.
+- [ ] Add draft improvement actions beyond rewrite, such as tone, clarity, outline, follow-up extraction, and action-item extraction.
+- [ ] Add a review queue for AI suggestions so automatic results are visible, dismissible, and reversible.
+- [ ] Add per-user/provider settings for automatic AI features, model selection, background job limits, and external-provider availability.
+- [ ] Make encrypted-note AI behavior explicit: no encrypted body analysis unless the user decrypts the note and intentionally runs or approves an AI action.
+- [x] Add an AnythingLLM custom agent skill package for note search, create, append, update, organize, and delete flows.
+- [ ] Add API helper endpoints if the plugin needs safer partial operations, such as append/prepend/replace-section, tag mutation, reminder mutation, or dry-run diffs.
+- [ ] Add tests for prompt building, privacy gating, empty/error responses, suggestion review behavior, and provider quirks such as default-temperature-only models.
+- [ ] Document which AI features can run locally/self-hosted and which require external providers.
+
+### 14. Audio, Video, And Animated Graph/Flow Support
 
 Outcome: Users can attach richer media and eventually build more expressive visual notes.
 
@@ -235,6 +300,11 @@ Outcome: Users can attach richer media and eventually build more expressive visu
 - Should `Ctrl+S` become the primary documented save shortcut while the current shift-save shortcut remains as a legacy alias?
 - How much should encrypted note metadata reveal for tags, reminders, and stats?
 - Should collaboration start with comments only, or is live editing important enough to design first?
+- How much offline functionality should work before login/session refresh is available?
+- Should local-first sync use a simple operation queue and conflict prompts first, or adopt a CRDT/revision-log model earlier?
+- Should decrypted offline drafts ever be allowed, and if so should they require an explicit user setting plus local device lock guidance?
+- Which AI-assisted features are safe to run automatically, and which should always require an explicit user action?
+- Should AI-generated summaries, suggested tags, and smart reminder suggestions live in note frontmatter, sidecar JSON, or an ephemeral cache?
 
 ## First Suggested Slice
 
@@ -243,7 +313,7 @@ Start with save behavior because it is small, user-visible, and foundational.
 - [x] Confirm current save shortcut behavior in the app.
 - [x] Add `Ctrl+S` / `Cmd+S` note saving.
 - [x] Keep the note in edit mode after manual save.
-- [ ] Verify auto-save respects the user interval.
+- [x] Verify auto-save respects the user interval.
 - [ ] Add tests around manual save, auto-save, markdown mode, and rich editor mode.
 - [x] Update shortcut docs.
 

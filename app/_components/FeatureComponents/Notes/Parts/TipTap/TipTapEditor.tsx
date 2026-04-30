@@ -38,6 +38,8 @@ type TiptapEditorProps = {
   tableSyntax?: TableSyntax;
   notes?: any[];
   checklists?: any[];
+  noteId?: string;
+  noteCategory?: string;
 };
 
 export interface TiptapEditorRef {
@@ -49,7 +51,7 @@ export interface TiptapEditorRef {
 }
 
 export const TiptapEditor = forwardRef<TiptapEditorRef, TiptapEditorProps>(
-  ({ content, onChange, tableSyntax, notes, checklists }, ref) => {
+  ({ content, onChange, tableSyntax, notes, checklists, noteId, noteCategory }, ref) => {
     const { user, appSettings, tagsIndex } = useAppMode();
     const { compactMode } = useSettings();
     const t = useTranslations();
@@ -370,6 +372,9 @@ export const TiptapEditor = forwardRef<TiptapEditorRef, TiptapEditorProps>(
             onLinkRequestHandled={() => setLinkRequestPending(false)}
             activeAiModel={activeAiModel}
             onActiveAiModelChange={setActiveAiModel}
+            noteId={noteId}
+            noteCategory={noteCategory}
+            checklists={checklists}
           />
         </div>
 

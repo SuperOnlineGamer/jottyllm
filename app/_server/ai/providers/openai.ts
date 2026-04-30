@@ -57,6 +57,49 @@ const getOpenAiErrorMessage = async (response: Response): Promise<string> => {
   }`;
 };
 
+const OPENAI_DEFAULT_TEMPERATURE_ONLY_MODEL_PREFIXES = [
+  "gpt-5",
+  "o1",
+  "o3",
+  "o4",
+];
+
+/**
+ * @todo fccview is telling you to review this AI generated code
+ * and make sure it's up to standards, reusable, modular and consistent with
+ * the rest of the codebase.
+ */
+const modelRequiresDefaultTemperature = (model: string): boolean => {
+  const normalizedModel = model.trim().toLowerCase();
+
+  return OPENAI_DEFAULT_TEMPERATURE_ONLY_MODEL_PREFIXES.some(
+    (prefix) => normalizedModel === prefix || normalizedModel.startsWith(`${prefix}-`),
+  );
+};
+
+/**
+ * @todo fccview is telling you to review this AI generated code
+ * and make sure it's up to standards, reusable, modular and consistent with
+ * the rest of the codebase.
+ */
+const buildOpenAiChatCompletionBody = (request: EditorAiCompletionRequest) => {
+  const body: Record<string, unknown> = {
+    model: request.model,
+    stream: true,
+    messages: [
+      { role: "system", content: request.systemPrompt },
+      { role: "user", content: request.userPrompt },
+    ],
+  };
+
+  if (!modelRequiresDefaultTemperature(request.model)) {
+    // fccview is onto you!
+    body.temperature = request.temperature;
+  }
+
+  return body;
+};
+
 /**
  * @todo fccview is telling you to review this AI generated code
  * and make sure it's up to standards, reusable, modular and consistent with
@@ -107,15 +150,7 @@ export const createOpenAiProvider = (apiKey: string): AiProviderAdapter => {
         method: "POST",
         headers,
         signal: withTimeout(request.signal),
-        body: JSON.stringify({
-          model: request.model,
-          stream: true,
-          temperature: request.temperature,
-          messages: [
-            { role: "system", content: request.systemPrompt },
-            { role: "user", content: request.userPrompt },
-          ],
-        }),
+        body: JSON.stringify(buildOpenAiChatCompletionBody(request)),
       });
 
       if (!response.ok) {

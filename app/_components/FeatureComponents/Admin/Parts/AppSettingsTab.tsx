@@ -62,9 +62,12 @@ export const AppSettingsTab = () => {
     setIsSaving(true);
     try {
       const formData = new FormData();
-      Object.entries(settings).forEach(([key, value]) =>
-        formData.append(key, value)
-      );
+      Object.entries(settings).forEach(([key, value]) => {
+        if (key === "noteTemplates" || key === "defaultNoteTemplateId") {
+          return;
+        }
+        formData.append(key, value);
+      });
 
       const result = await updateAppSettings(formData);
       if (result.success) {

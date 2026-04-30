@@ -9,6 +9,8 @@ HTTPS=true
 SERVE_PUBLIC_IMAGES=yes
 SERVE_PUBLIC_FILES=yes
 STOP_CHECK_UPDATES=no
+OPENAI_API_KEY=sk-...
+# or: OPENAI_API_KEY_FILE=/app/config/openai-api-key.txt
 AUTH_MODE=oidc
 OIDC_ISSUER=<YOUR_SSO_ISSUER>
 OIDC_CLIENT_ID=<YOUR_SSO_CLIENT_ID>
@@ -39,6 +41,8 @@ OIDC_ADMIN_GROUPS=admins
 - `ENABLE_PWA_ZOOM=yes` Optional. Enables zoomming on the PWA for accessibility reasons.
 - `JOTTY_BODY_SIZE_LIMIT=100mb` Optional. Maximum request body size accepted by Server Actions (uploads, drawio attachments, avatars, etc.). Defaults to `100mb`. Accepts `b`, `kb`, `mb`, `gb` (e.g. `50mb`, `2gb`). Applied at container start via the runtime patcher — see [Runtime Patches](./PATCHES.md).
 - `JOTTY_FREEBSD=1` Optional. **FreeBSD only.** Enables the FreeBSD compatibility patch which stubs `@swc/core` (no native or WASM binary is published for FreeBSD) and forces Next.js to use webpack instead of Turbopack. Has no effect on Linux/macOS/Windows — leave unset everywhere else. Applied at container start via the runtime patcher — see [Runtime Patches](./PATCHES.md).
+- `OPENAI_API_KEY=sk-...` Optional. Server-only OpenAI API key for inline AI editor actions. When this is set, the admin AI settings page shows the key as configured without storing it in app settings. You still use the admin editor settings to enable AI, enable the OpenAI provider, and choose the default model.
+- `OPENAI_API_KEY_FILE=/app/config/openai-api-key.txt` Optional. Reads the OpenAI API key from a mounted file instead of an environment variable. This is preferred for Docker deployments because the key can live in the mounted config folder instead of directly in `docker-compose.yml`.
 
 ## SSO Configuration (Optional)
 

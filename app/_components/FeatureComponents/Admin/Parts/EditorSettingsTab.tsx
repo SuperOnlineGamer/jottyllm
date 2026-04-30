@@ -16,6 +16,7 @@ import { deleteAllRepos } from "@/app/_server/actions/history";
 import { normalizeEditorAiSettings } from "@/app/_utils/ai-settings-utils";
 import { useTranslations } from "next-intl";
 import type { EditorAiProvider, EditorAiSettings } from "@/app/_types";
+import { NoteTemplateManager } from "@/app/_components/FeatureComponents/Templates/NoteTemplateManager";
 
 export const EditorSettingsTab = () => {
   const t = useTranslations();
@@ -266,6 +267,9 @@ export const EditorSettingsTab = () => {
       const formData = new FormData();
 
       Object.entries(settings).forEach(([key, value]) => {
+        if (key === "noteTemplates" || key === "defaultNoteTemplateId") {
+          return;
+        }
         if (key === "editor") {
           formData.append(key, JSON.stringify(value));
         } else {
@@ -700,6 +704,20 @@ export const EditorSettingsTab = () => {
             </div>
           </div>
         </div>
+      </div>
+
+      <div className="bg-card border border-border rounded-jotty p-6">
+        <div className="mb-6 space-y-2">
+          <h3 className="text-lg font-semibold">Note Templates</h3>
+          <p className="text-muted-foreground text-md lg:text-sm">
+            Admin templates are available to everyone. Mark one always visible when users should not be able to hide it.
+          </p>
+        </div>
+        <NoteTemplateManager
+          scope="admin"
+          adminTemplates={settings.noteTemplates || []}
+          defaultTemplateId={settings.defaultNoteTemplateId || "blank"}
+        />
       </div>
 
       <div className="flex justify-end">

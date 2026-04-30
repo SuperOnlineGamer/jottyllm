@@ -14,7 +14,37 @@
         in: query
         schema:
           type: string
-        description: Search notes by title or content
+        description: Search notes by title/content. Supports quoted phrases and filters such as tag:, color:, category:, created:, updated:, reminder:, and due:.
+      - name: tag
+        in: query
+        schema:
+          type: string
+        description: Filter notes by tag
+      - name: color
+        in: query
+        schema:
+          type: string
+        description: Filter notes by tag color name or foreground value
+      - name: created
+        in: query
+        schema:
+          type: string
+        description: Filter notes by created date or range, for example 2026-04-30 or 2026-04-01..2026-04-30
+      - name: updated
+        in: query
+        schema:
+          type: string
+        description: Filter notes by updated date or range
+      - name: reminder
+        in: query
+        schema:
+          type: string
+        description: Filter notes by reminder state, such as any, pending, done, dismissed, overdue, or upcoming
+      - name: due
+        in: query
+        schema:
+          type: string
+        description: Filter notes by reminder due date or range
     responses:
       '200':
         description: List of notes
@@ -42,6 +72,24 @@
                         type: string
                         description: Markdown content
                         example: "Note content here..."
+                      tags:
+                        type: array
+                        items:
+                          type: string
+                      reminders:
+                        type: array
+                        items:
+                          type: object
+                      linkedTasks:
+                        type: array
+                        items:
+                          type: object
+                      comments:
+                        type: array
+                        items:
+                          type: object
+                      encrypted:
+                        type: boolean
                       createdAt:
                         type: string
                         format: date-time
@@ -70,6 +118,11 @@
                 type: string
                 description: Markdown content
                 example: "Note content here..."
+              tags:
+                type: array
+                items:
+                  type: string
+                description: Optional note tags to store in frontmatter
               category:
                 type: string
                 default: "Uncategorized"
@@ -97,6 +150,24 @@
                       type: string
                     category:
                       type: string
+                    tags:
+                      type: array
+                      items:
+                        type: string
+                    reminders:
+                      type: array
+                      items:
+                        type: object
+                    linkedTasks:
+                      type: array
+                      items:
+                        type: object
+                    comments:
+                      type: array
+                      items:
+                        type: object
+                    encrypted:
+                      type: boolean
                     createdAt:
                       type: string
                       format: date-time
@@ -109,6 +180,71 @@
         description: Invalid request (missing title)
 
 /notes/{noteId}:
+  get:
+    summary: Get Note
+    description: Retrieves a single note for the authenticated user.
+    tags:
+      - Notes
+    parameters:
+      - name: noteId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: UUID of the note to retrieve
+    responses:
+      '200':
+        description: Note retrieved successfully
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                success:
+                  type: boolean
+                  example: true
+                data:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                      format: uuid
+                    title:
+                      type: string
+                    content:
+                      type: string
+                    category:
+                      type: string
+                    tags:
+                      type: array
+                      items:
+                        type: string
+                    reminders:
+                      type: array
+                      items:
+                        type: object
+                    linkedTasks:
+                      type: array
+                      items:
+                        type: object
+                    comments:
+                      type: array
+                      items:
+                        type: object
+                    encrypted:
+                      type: boolean
+                    createdAt:
+                      type: string
+                      format: date-time
+                    updatedAt:
+                      type: string
+                      format: date-time
+                    owner:
+                      type: string
+      '404':
+        description: Note not found
+
   put:
     summary: Update Note
     description: Updates an existing note. All fields are optional - unspecified fields will preserve their current values.
@@ -139,6 +275,15 @@
               category:
                 type: string
                 example: "Work"
+              tags:
+                type: array
+                items:
+                  type: string
+                description: Optional replacement tag list. Omit to preserve current tags.
+              expectedUpdatedAt:
+                type: string
+                format: date-time
+                description: Current note updatedAt from a prior read. Returns 409 if stale.
     responses:
       '200':
         description: Note updated successfully
@@ -162,6 +307,24 @@
                       type: string
                     category:
                       type: string
+                    tags:
+                      type: array
+                      items:
+                        type: string
+                    reminders:
+                      type: array
+                      items:
+                        type: object
+                    linkedTasks:
+                      type: array
+                      items:
+                        type: object
+                    comments:
+                      type: array
+                      items:
+                        type: object
+                    encrypted:
+                      type: boolean
                     createdAt:
                       type: string
                       format: date-time
@@ -174,6 +337,8 @@
         description: Note not found
       '400':
         description: Invalid request
+      '409':
+        description: Note changed since the supplied expectedUpdatedAt value
 
   delete:
     summary: Delete Note

@@ -9,6 +9,7 @@ import { MAX_FILE_SIZE } from "@/app/_consts/files";
 import { logAudit } from "@/app/_server/actions/log";
 import { DEFAULT_EDITOR_AI_SETTINGS } from "@/app/_consts/ai";
 import { normalizeEditorAiSettings } from "@/app/_utils/ai-settings-utils";
+import { normalizeNoteTemplates } from "@/app/_utils/note-template-utils";
 import {
   isOpenAiKeyConfigured,
   saveOpenAiApiKey,
@@ -20,6 +21,24 @@ const CONFIG_SETTINGS_PATH = path.join(
   "config",
   "settings.json",
 );
+
+const normalizeEditorAiSettingsWithRuntimeSecrets = async (
+  settings: AppSettings["editor"]["ai"],
+) => {
+  const aiSettings = normalizeEditorAiSettings(settings);
+  const keyConfigured = await isOpenAiKeyConfigured();
+
+  return {
+    ...aiSettings,
+    providers: {
+      ...aiSettings.providers,
+      openai: {
+        ...aiSettings.providers.openai,
+        keyConfigured,
+      },
+    },
+  };
+};
 
 export const getSettings = async () => {
   const defaultSettings = {
@@ -37,6 +56,8 @@ export const getSettings = async () => {
     adminContentAccess: "yes",
     defaultDateFormat: "dd/mm/yyyy",
     defaultTimeFormat: "12-hours",
+    defaultNoteTemplateId: "blank",
+    noteTemplates: [],
     editor: {
       enableSlashCommands: true,
       enableBubbleMenu: true,
@@ -70,12 +91,21 @@ export const getSettings = async () => {
       settings.editor = {
         ...defaultSettings.editor,
         ...settings.editor,
-        ai: normalizeEditorAiSettings(settings.editor.ai),
+        ai: await normalizeEditorAiSettingsWithRuntimeSecrets(settings.editor.ai),
       };
     }
 
+    settings.defaultNoteTemplateId = settings.defaultNoteTemplateId || "blank";
+    settings.noteTemplates = normalizeNoteTemplates(
+      settings.noteTemplates,
+      "admin",
+    );
+
     return settings;
   } catch (error) {
+    defaultSettings.editor.ai = await normalizeEditorAiSettingsWithRuntimeSecrets(
+      defaultSettings.editor.ai,
+    );
     return defaultSettings;
   }
 };
@@ -114,6 +144,8 @@ export const getAppSettings = async (): Promise<Result<AppSettings>> => {
           hideLanguageSelector: "no",
           defaultDateFormat: "dd/mm/yyyy",
           defaultTimeFormat: "12-hours",
+          defaultNoteTemplateId: "blank",
+          noteTemplates: [],
           editor: {
             enableSlashCommands: true,
             enableBubbleMenu: true,
@@ -138,6 +170,15 @@ export const getAppSettings = async (): Promise<Result<AppSettings>> => {
       settings.defaultTimeFormat = "12-hours";
     }
 
+    if (!settings.defaultNoteTemplateId) {
+      settings.defaultNoteTemplateId = "blank";
+    }
+
+    settings.noteTemplates = normalizeNoteTemplates(
+      settings.noteTemplates,
+      "admin",
+    );
+
     if (!settings.editor) {
       settings.editor = {
         enableSlashCommands: true,
@@ -149,19 +190,12 @@ export const getAppSettings = async (): Promise<Result<AppSettings>> => {
       };
     }
 
-    const normalizedAiSettings = normalizeEditorAiSettings(settings.editor.ai);
+    const normalizedAiSettings = await normalizeEditorAiSettingsWithRuntimeSecrets(
+      settings.editor.ai,
+    );
     settings.editor = {
       ...settings.editor,
-      ai: {
-        ...normalizedAiSettings,
-        providers: {
-          ...normalizedAiSettings.providers,
-          openai: {
-            ...normalizedAiSettings.providers.openai,
-            keyConfigured: await isOpenAiKeyConfigured(),
-          },
-        },
-      },
+      ai: normalizedAiSettings,
     };
 
     return { success: true, data: settings };
@@ -227,6 +261,24 @@ export const updateAppSettings = async (
     const defaultTimeFormat =
       (formData.get("defaultTimeFormat") as "12-hours" | "24-hours") ||
       "12-hours";
+    const existingSettings = await getSettings();
+    const defaultNoteTemplateId =
+      (formData.get("defaultNoteTemplateId") as string) ||
+      existingSettings.defaultNoteTemplateId ||
+      "blank";
+    const noteTemplatesData = formData.get("noteTemplates") as string | null;
+    let noteTemplates = existingSettings.noteTemplates || [];
+
+    if (noteTemplatesData) {
+      try {
+        noteTemplates = normalizeNoteTemplates(
+          JSON.parse(noteTemplatesData),
+          "admin",
+        );
+      } catch {
+        noteTemplates = existingSettings.noteTemplates || [];
+      }
+    }
 
     let editorSettings = {
       enableSlashCommands: true,
@@ -271,6 +323,8 @@ export const updateAppSettings = async (
       hideLanguageSelector: hideLanguageSelector,
       defaultDateFormat: defaultDateFormat,
       defaultTimeFormat: defaultTimeFormat,
+      defaultNoteTemplateId,
+      noteTemplates,
       editor: editorSettings,
     };
 

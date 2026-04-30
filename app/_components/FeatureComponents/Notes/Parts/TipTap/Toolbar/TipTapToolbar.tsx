@@ -32,7 +32,7 @@ import { AiModelDropdown } from "@/app/_components/FeatureComponents/Notes/Parts
 import { useTranslations } from "next-intl";
 import { PromptModal } from "@/app/_components/GlobalComponents/Modals/ConfirmationModals/PromptModal";
 import { useAppMode } from "@/app/_providers/AppModeProvider";
-import type { EditorAiModelSelection } from "@/app/_types";
+import type { Checklist, EditorAiModelSelection } from "@/app/_types";
 import * as MarkdownUtils from "@/app/_utils/markdown-editor-utils";
 import { insertTextAtCursor } from "@/app/_utils/markdown-editor-utils";
 
@@ -52,6 +52,9 @@ type ToolbarProps = {
   onLinkRequestHandled?: () => void;
   activeAiModel?: EditorAiModelSelection | null;
   onActiveAiModelChange?: (selection: EditorAiModelSelection) => void;
+  noteId?: string;
+  noteCategory?: string;
+  checklists?: Partial<Checklist>[];
 };
 
 export const TiptapToolbar = ({
@@ -66,6 +69,9 @@ export const TiptapToolbar = ({
   onLinkRequestHandled,
   activeAiModel = null,
   onActiveAiModelChange,
+  noteId,
+  noteCategory,
+  checklists = [],
 }: ToolbarProps) => {
   const t = useTranslations();
   const { user } = useAppMode();
@@ -549,6 +555,9 @@ export const TiptapToolbar = ({
             onMarkdownChange={onMarkdownChange}
             onFileModalOpen={() => setShowFileModal(true)}
             onTableModalOpen={() => setShowTableModal(true)}
+            noteId={noteId}
+            noteCategory={noteCategory}
+            checklists={checklists}
             onImageSizeModalOpen={(url) => {
               setSelectedImageUrl(url);
               setSelectedImageWidth(undefined);

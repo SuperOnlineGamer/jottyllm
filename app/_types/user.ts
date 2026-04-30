@@ -1,5 +1,6 @@
 import { Modes } from "./enums";
 import { EncryptionSettings } from "./encryption";
+import { NoteTemplate } from "./note";
 
 export type EnableRecurrence = "enable" | "disable";
 export type ShowCompletedSuggestions = "enable" | "disable";
@@ -36,6 +37,7 @@ export type DefaultChecklistFilter =
   | "simple";
 export type DefaultNoteFilter = "all" | "recent" | "pinned";
 export type QuickCreateNotes = "enable" | "disable";
+export type QuickCreateNotesTemplate = string;
 export type HideConnectionIndicator = "enable" | "disable";
 export type CodeBlockStyle = "default" | "themed";
 export type ChecklistItemClickAction = "toggle" | "edit";
@@ -73,6 +75,9 @@ export interface User {
   defaultNoteFilter?: DefaultNoteFilter;
   quickCreateNotes?: QuickCreateNotes;
   quickCreateNotesCategory?: string;
+  quickCreateNotesTemplate?: QuickCreateNotesTemplate;
+  noteTemplates?: NoteTemplate[];
+  hiddenNoteTemplateIds?: string[];
   hideConnectionIndicator?: HideConnectionIndicator;
   codeBlockStyle?: CodeBlockStyle;
   tagColors?: TagColorOverrides;

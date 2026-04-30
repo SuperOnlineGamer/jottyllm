@@ -1,10 +1,15 @@
 "use server";
 
 import { getCurrentUser } from "@/app/_server/actions/users";
-import { NOTES_DIR } from "@/app/_consts/files";
 import { CHECKLISTS_FOLDER } from "@/app/_consts/checklists";
 import { grepSearchContent, grepExtractFrontmatter } from "@/app/_utils/grep-utils";
-import { ItemTypes } from "@/app/_types/enums";
+import { getUserNotes } from "@/app/_server/actions/note";
+import {
+  buildNoteSearchSnippet,
+  getSearchableTextTerms,
+  matchesNoteSearchQuery,
+  parseSearchQuery,
+} from "@/app/_utils/search-query-utils";
 import path from "path";
 
 export interface SearchResult {
@@ -17,7 +22,10 @@ export interface SearchResult {
 }
 
 export const search = async (query: string): Promise<{ success: boolean; data: SearchResult[] }> => {
-  if (!query || query.trim().length < 2) {
+  const parsedQuery = parseSearchQuery(query || "");
+  const textTerms = getSearchableTextTerms(parsedQuery);
+
+  if (!parsedQuery.hasStructuredFilters && parsedQuery.plainText.length < 2) {
     return { success: true, data: [] };
   }
 
@@ -26,18 +34,21 @@ export const search = async (query: string): Promise<{ success: boolean; data: S
     return { success: false, data: [] };
   }
 
-  const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const escapedQuery = parsedQuery.plainText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-  const notesDir = NOTES_DIR(user.username);
   const checklistsDir = path.join(process.cwd(), "data", CHECKLISTS_FOLDER, user.username);
+  const shouldSearchChecklists =
+    !parsedQuery.hasStructuredFilters && parsedQuery.plainText.length >= 2;
 
   const [noteResults, checklistResults] = await Promise.all([
-    grepSearchContent(notesDir, escapedQuery).catch(() => []),
-    grepSearchContent(checklistsDir, escapedQuery).catch(() => []),
+    getUserNotes({ username: user.username }).catch(() => ({ success: false, data: [] })),
+    shouldSearchChecklists
+      ? grepSearchContent(checklistsDir, escapedQuery).catch(() => [])
+      : Promise.resolve([]),
   ]);
 
   const cleanMatchLine = (line: string): string => {
-    let cleaned = line
+    const cleaned = line
       .replace(/^---$/, "")
       .replace(/^- \[[x ]\]\s*/i, "")
       .replace(/\s*\|.*$/, "")
@@ -70,8 +81,28 @@ export const search = async (query: string): Promise<{ success: boolean; data: S
     );
   };
 
-  const [notes, checklists] = await Promise.all([
-    processResults(noteResults, "note"),
+  const notes: SearchResult[] = noteResults.success && noteResults.data
+    ? noteResults.data
+      .filter((note) => matchesNoteSearchQuery(note, parsedQuery, user.tagColors))
+      .slice(0, 20)
+      .map((note) => {
+        const title = note.title || note.id || note.uuid || "Untitled Note";
+        const id = note.id || note.uuid || title;
+
+        return {
+          id,
+          uuid: note.uuid,
+          title,
+          type: "note" as const,
+          category: note.category || "Uncategorized",
+          content: textTerms.length > 0
+            ? buildNoteSearchSnippet(note, parsedQuery)
+            : undefined,
+        };
+      })
+    : [];
+
+  const [checklists] = await Promise.all([
     processResults(checklistResults, "checklist"),
   ]);
 

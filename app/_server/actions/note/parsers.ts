@@ -40,6 +40,9 @@ export const parseMarkdownNote = (
     encrypted: metadata.encrypted || false,
     encryptionMethod: metadata.encryptionMethod,
     tags: Array.isArray(metadata.tags) ? metadata.tags : [],
+    reminders: Array.isArray(metadata.reminders) ? metadata.reminders : [],
+    linkedTasks: Array.isArray(metadata.linkedTasks) ? metadata.linkedTasks : [],
+    comments: Array.isArray(metadata.comments) ? metadata.comments : [],
   };
 };
 
@@ -191,6 +194,18 @@ export const noteToMarkdown = (note: Note): string => {
 
   if (note.tags && note.tags.length > 0) {
     metadata.tags = note.tags;
+  }
+
+  if (note.reminders && note.reminders.length > 0) {
+    metadata.reminders = note.reminders;
+  }
+
+  if (note.linkedTasks && note.linkedTasks.length > 0) {
+    metadata.linkedTasks = note.linkedTasks;
+  }
+
+  if (note.comments && note.comments.length > 0) {
+    metadata.comments = note.comments;
   }
 
   const frontmatter = generateYamlFrontmatter(metadata);

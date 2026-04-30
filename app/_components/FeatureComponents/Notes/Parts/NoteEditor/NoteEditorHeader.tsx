@@ -29,11 +29,12 @@ import {
   GitCompareIcon,
   Copy02Icon,
 } from "hugeicons-react";
-import { Note, Category } from "@/app/_types";
+import { Note, Category, NoteComment, NoteReminder } from "@/app/_types";
 import { NoteEditorViewModel } from "@/app/_types";
 import { useEffect, useState } from "react";
 import { DropdownMenu } from "@/app/_components/GlobalComponents/Dropdowns/DropdownMenu";
 import { Input } from "@/app/_components/GlobalComponents/FormElements/Input";
+import { Textarea } from "@/app/_components/GlobalComponents/FormElements/Textarea";
 import { useRouter } from "next/navigation";
 import { useAppMode } from "@/app/_providers/AppModeProvider";
 import { toggleArchive } from "@/app/_server/actions/dashboard";
@@ -42,6 +43,7 @@ import {
   copyTextToClipboard,
   encodeCategoryPath,
   buildCategoryPath,
+  cn,
 } from "@/app/_utils/global-utils";
 import { sharingInfo } from "@/app/_utils/sharing-utils";
 import { usePermissions } from "@/app/_providers/PermissionsProvider";
@@ -59,6 +61,12 @@ import { useTranslations } from "next-intl";
 import { NoteHistoryModal } from "@/app/_components/GlobalComponents/Modals/NotesModal/NoteHistoryModal";
 import { useToast } from "@/app/_providers/ToastProvider";
 import { NoteTagEditor } from "@/app/_components/FeatureComponents/Tags/TagChip";
+import {
+  addNoteComment,
+  deleteNoteReminder,
+  resolveNoteComment,
+  upsertNoteReminder,
+} from "@/app/_server/actions/note-workflows";
 
 interface NoteEditorHeaderProps {
   note: Note;
@@ -72,6 +80,23 @@ interface NoteEditorHeaderProps {
   onOpenDecryptModal?: React.MutableRefObject<(() => void) | null>;
   onOpenViewModal?: React.MutableRefObject<(() => void) | null>;
 }
+
+type WorkflowPanel = "reminders" | "comments";
+
+const localDateTimeToIso = (value: string): string => {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString();
+};
+
+const formatWorkflowDateTime = (value: string): string => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return date.toLocaleString(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+};
 
 export const NoteEditorHeader = ({
   note,
@@ -110,6 +135,14 @@ export const NoteEditorHeader = ({
     useState(false);
   const [copied, setCopied] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [activeWorkflowPanel, setActiveWorkflowPanel] =
+    useState<WorkflowPanel | null>(null);
+  const [reminders, setReminders] = useState<NoteReminder[]>(note.reminders || []);
+  const [comments, setComments] = useState<NoteComment[]>(note.comments || []);
+  const [reminderTitle, setReminderTitle] = useState("");
+  const [reminderDueAt, setReminderDueAt] = useState("");
+  const [commentBody, setCommentBody] = useState("");
+  const [isSavingWorkflow, setIsSavingWorkflow] = useState(false);
   const { user, appSettings } = useAppMode();
   const router = useRouter();
   const { permissions } = usePermissions();
@@ -118,6 +151,12 @@ export const NoteEditorHeader = ({
   useEffect(() => {
     setHasPromptedForDecryption(false);
   }, [note?.id]);
+
+  useEffect(() => {
+    setReminders(note.reminders || []);
+    setComments(note.comments || []);
+    setActiveWorkflowPanel(null);
+  }, [note?.id, note.reminders, note.comments]);
 
   useEffect(() => {
     if (onOpenDecryptModal) {
@@ -151,6 +190,139 @@ export const NoteEditorHeader = ({
     hasPromptedForDecryption,
     isEditing,
   ]);
+
+  const buildWorkflowFormData = () => {
+    const formData = new FormData();
+    formData.append("noteId", note.uuid || note.id);
+    formData.append("noteCategory", note.category || "Uncategorized");
+    return formData;
+  };
+
+  const toggleWorkflowPanel = (panel: WorkflowPanel) => {
+    setActiveWorkflowPanel((current) => (current === panel ? null : panel));
+  };
+
+  const handleAddReminder = async () => {
+    if (!permissions?.canEdit) return;
+    const dueAtIso = localDateTimeToIso(reminderDueAt);
+    if (!dueAtIso) {
+      showToast({
+        type: "error",
+        title: t("common.error"),
+        message: "Choose a valid reminder date and time.",
+      });
+      return;
+    }
+
+    setIsSavingWorkflow(true);
+    try {
+      const formData = buildWorkflowFormData();
+      formData.append("dueAt", dueAtIso);
+      formData.append(
+        "timezoneOffsetMinutes",
+        String(new Date(reminderDueAt).getTimezoneOffset()),
+      );
+      formData.append("title", reminderTitle.trim());
+      formData.append("notify", "true");
+
+      const result = await upsertNoteReminder(formData);
+      if (!result.success || !result.data) {
+        throw new Error(result.error || "Failed to save reminder.");
+      }
+
+      setReminders(result.data.note.reminders || []);
+      setReminderTitle("");
+      setReminderDueAt("");
+      showToast({
+        type: "success",
+        title: t("common.success"),
+        message: "Reminder added.",
+      });
+      router.refresh();
+    } catch (error) {
+      showToast({
+        type: "error",
+        title: t("common.error"),
+        message: error instanceof Error ? error.message : "Failed to save reminder.",
+      });
+    } finally {
+      setIsSavingWorkflow(false);
+    }
+  };
+
+  const handleDeleteReminder = async (reminderId: string) => {
+    if (!permissions?.canEdit) return;
+
+    setIsSavingWorkflow(true);
+    try {
+      const formData = buildWorkflowFormData();
+      formData.append("reminderId", reminderId);
+      const result = await deleteNoteReminder(formData);
+      if (!result.success || !result.data) {
+        throw new Error(result.error || "Failed to delete reminder.");
+      }
+      setReminders(result.data.note.reminders || []);
+      router.refresh();
+    } catch (error) {
+      showToast({
+        type: "error",
+        title: t("common.error"),
+        message: error instanceof Error ? error.message : "Failed to delete reminder.",
+      });
+    } finally {
+      setIsSavingWorkflow(false);
+    }
+  };
+
+  const handleAddComment = async () => {
+    if (!permissions?.canEdit) return;
+    if (!commentBody.trim()) return;
+
+    setIsSavingWorkflow(true);
+    try {
+      const formData = buildWorkflowFormData();
+      formData.append("body", commentBody.trim());
+      const result = await addNoteComment(formData);
+      if (!result.success || !result.data) {
+        throw new Error(result.error || "Failed to add comment.");
+      }
+      setComments(result.data.note.comments || []);
+      setCommentBody("");
+      router.refresh();
+    } catch (error) {
+      showToast({
+        type: "error",
+        title: t("common.error"),
+        message: error instanceof Error ? error.message : "Failed to add comment.",
+      });
+    } finally {
+      setIsSavingWorkflow(false);
+    }
+  };
+
+  const handleResolveComment = async (commentId: string) => {
+    if (!permissions?.canEdit) return;
+
+    setIsSavingWorkflow(true);
+    try {
+      const formData = buildWorkflowFormData();
+      formData.append("commentId", commentId);
+      const result = await resolveNoteComment(formData);
+      if (!result.success || !result.data) {
+        throw new Error(result.error || "Failed to resolve comment.");
+      }
+      setComments(result.data.note.comments || []);
+      router.refresh();
+    } catch (error) {
+      showToast({
+        type: "error",
+        title: t("common.error"),
+        message: error instanceof Error ? error.message : "Failed to resolve comment.",
+      });
+    } finally {
+      setIsSavingWorkflow(false);
+    }
+  };
 
   const handleArchive = async () => {
     const result = await toggleArchive(note, Modes.NOTES);
@@ -288,6 +460,67 @@ export const NoteEditorHeader = ({
 
   const isContentStillEncrypted = isEncrypted(viewModel.editorContent || "");
   const isInViewMode = note?.encrypted && !isContentStillEncrypted;
+  const shouldShowSaveStatus =
+    isEditing || (user?.notesDefaultMode === "edit" && permissions?.canEdit);
+  const saveIndicator = (() => {
+    if (!shouldShowSaveStatus) return null;
+
+    if (status.isSaving) {
+      return {
+        label: t("common.saving"),
+        icon: <Clock01Icon className="h-3.5 w-3.5 animate-pulse" />,
+        className: "text-muted-foreground",
+        title: t("common.saving"),
+      };
+    }
+
+    if (status.isAutoSaving) {
+      return {
+        label: t("notes.saveStatusAutosaving"),
+        icon: <Clock01Icon className="h-3.5 w-3.5 animate-pulse" />,
+        className: "text-muted-foreground",
+        title: t("notes.saveStatusAutosaving"),
+      };
+    }
+
+    if (status.saveState === "error") {
+      return {
+        label: t("notes.saveStatusError"),
+        icon: <Cancel01Icon className="h-3.5 w-3.5" />,
+        className: "text-destructive",
+        title: status.error || t("notes.saveStatusError"),
+      };
+    }
+
+    if (viewModel.hasUnsavedChanges) {
+      return {
+        label: t("notes.saveStatusUnsaved"),
+        icon: <Clock01Icon className="h-3.5 w-3.5" />,
+        className: "text-muted-foreground",
+        title: t("notes.saveStatusUnsaved"),
+      };
+    }
+
+    if (status.saveState === "saved") {
+      return {
+        label: t("notes.saveStatusSaved"),
+        icon: <Tick02Icon className="h-3.5 w-3.5" />,
+        className: "text-green-600 dark:text-green-400",
+        title: t("notes.saveStatusSaved"),
+      };
+    }
+
+    return null;
+  })();
+  const shouldShowTagEditor =
+    appSettings?.editor?.enableTags !== false &&
+    (isEditing || viewModel.tags.length > 0);
+  const pendingReminders = reminders.filter(
+    (reminder) => reminder.status === "pending",
+  );
+  const openComments = comments.filter((comment) => !comment.resolvedAt);
+  const shouldShowWorkflowSummary =
+    permissions?.canEdit || pendingReminders.length > 0 || openComments.length > 0;
 
   return (
     <>
@@ -680,18 +913,235 @@ export const NoteEditorHeader = ({
             )}
           </div>
         </div>
-        {appSettings?.editor?.enableTags !== false &&
-          (isEditing || viewModel.tags.length > 0) && (
-            <div className="mt-2 pl-11 pr-1">
+        {(shouldShowTagEditor || saveIndicator) && (
+          <div className="mt-2 flex flex-col gap-2 pl-11 pr-1 lg:flex-row lg:items-center lg:justify-between">
+            {shouldShowTagEditor ? (
               <NoteTagEditor
                 tags={viewModel.tags}
                 isEditing={isEditing && (!note?.encrypted || isEditingEncrypted)}
                 onAddTag={viewModel.handleAddTag}
                 onRemoveTag={viewModel.handleRemoveTag}
+                className="flex-1"
                 disabled={status.isSaving || status.isAutoSaving}
               />
+            ) : (
+              <div />
+            )}
+            {saveIndicator && (
+              <div
+                className={cn(
+                  "flex shrink-0 items-center gap-1.5 text-xs font-medium",
+                  saveIndicator.className,
+                )}
+                title={saveIndicator.title}
+                aria-live="polite"
+              >
+                {saveIndicator.icon}
+                <span>{saveIndicator.label}</span>
+              </div>
+            )}
+          </div>
+        )}
+        {shouldShowWorkflowSummary && (
+          <div className="mt-2 pl-11 pr-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant={activeWorkflowPanel === "reminders" ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => toggleWorkflowPanel("reminders")}
+                className="gap-1.5"
+              >
+                <Clock01Icon className="h-4 w-4" />
+                <span>Reminders</span>
+                {pendingReminders.length > 0 && (
+                  <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-xs text-primary">
+                    {pendingReminders.length}
+                  </span>
+                )}
+              </Button>
+              <Button
+                type="button"
+                variant={activeWorkflowPanel === "comments" ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => toggleWorkflowPanel("comments")}
+                className="gap-1.5"
+              >
+                <MessageLock02Icon className="h-4 w-4" />
+                <span>Comments</span>
+                {openComments.length > 0 && (
+                  <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-xs text-primary">
+                    {openComments.length}
+                  </span>
+                )}
+              </Button>
             </div>
-          )}
+
+            {activeWorkflowPanel && (
+              <div className="mt-3 rounded-jotty border border-border bg-muted/20 p-4">
+                <div
+                  className={cn(
+                    "space-y-3",
+                    activeWorkflowPanel !== "reminders" && "hidden",
+                  )}
+                >
+                  <div>
+                    <h3 className="text-md lg:text-sm font-semibold text-foreground">
+                      Reminders
+                    </h3>
+                    <p className="text-sm lg:text-xs text-muted-foreground">
+                      Attach a due date to this note.
+                    </p>
+                  </div>
+                  {permissions?.canEdit && (
+                    <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(180px,220px)_auto] sm:items-end">
+                      <Input
+                        id="note-reminder-title"
+                        type="text"
+                        label="Title"
+                        value={reminderTitle}
+                        onChange={(event) => setReminderTitle(event.target.value)}
+                        placeholder="Follow up"
+                        disabled={isSavingWorkflow}
+                      />
+                      <Input
+                        id="note-reminder-due-at"
+                        type="datetime-local"
+                        label="Due"
+                        value={reminderDueAt}
+                        onChange={(event) => setReminderDueAt(event.target.value)}
+                        disabled={isSavingWorkflow}
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={handleAddReminder}
+                        disabled={isSavingWorkflow || !reminderDueAt}
+                      >
+                        Add
+                      </Button>
+                    </div>
+                  )}
+                  <div className="space-y-2">
+                    {reminders.length > 0 ? (
+                      reminders.map((reminder) => (
+                        <div
+                          key={reminder.id}
+                          className="flex items-center justify-between gap-3 rounded-jotty border border-border bg-background px-3 py-2"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate text-md lg:text-sm font-medium">
+                              {reminder.title || "Untitled reminder"}
+                            </p>
+                            <p className="text-sm lg:text-xs text-muted-foreground">
+                              {formatWorkflowDateTime(reminder.dueAt)} · {reminder.status}
+                            </p>
+                          </div>
+                          {permissions?.canEdit && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleDeleteReminder(reminder.id)}
+                              disabled={isSavingWorkflow}
+                              title="Delete reminder"
+                            >
+                              <Delete03Icon className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-md lg:text-sm text-muted-foreground">
+                        No reminders yet.
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div
+                  className={cn(
+                    "space-y-3",
+                    activeWorkflowPanel !== "comments" && "hidden",
+                  )}
+                >
+                  <div>
+                    <h3 className="text-md lg:text-sm font-semibold text-foreground">
+                      Comments
+                    </h3>
+                    <p className="text-sm lg:text-xs text-muted-foreground">
+                      Leave a note for collaborators or future review.
+                    </p>
+                  </div>
+                  {permissions?.canEdit && (
+                    <div className="space-y-2">
+                      <Textarea
+                        id="note-comment-body"
+                        label="New comment"
+                        value={commentBody}
+                        onChange={(event) => setCommentBody(event.target.value)}
+                        rows={3}
+                        minHeight="90px"
+                        disabled={isSavingWorkflow}
+                      />
+                      <div className="flex justify-end">
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={handleAddComment}
+                          disabled={isSavingWorkflow || !commentBody.trim()}
+                        >
+                          Add comment
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                  <div className="space-y-2">
+                    {comments.length > 0 ? (
+                      comments.map((comment) => (
+                        <div
+                          key={comment.id}
+                          className={cn(
+                            "rounded-jotty border border-border bg-background px-3 py-2",
+                            comment.resolvedAt && "opacity-60",
+                          )}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0 space-y-1">
+                              <p className="whitespace-pre-wrap text-md lg:text-sm">
+                                {comment.body}
+                              </p>
+                              <p className="text-sm lg:text-xs text-muted-foreground">
+                                {comment.author} · {formatWorkflowDateTime(comment.createdAt)}
+                                {comment.resolvedAt ? " · Resolved" : ""}
+                              </p>
+                            </div>
+                            {permissions?.canEdit && !comment.resolvedAt && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleResolveComment(comment.id)}
+                                disabled={isSavingWorkflow}
+                                title="Resolve comment"
+                              >
+                                <Tick02Icon className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-md lg:text-sm text-muted-foreground">
+                        No comments yet.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
       {showShareModal && (
         <ShareModal

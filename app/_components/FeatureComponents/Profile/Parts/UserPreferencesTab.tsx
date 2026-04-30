@@ -26,6 +26,7 @@ import {
   ChecklistItemClickAction,
   DefaultNoteFilter,
   QuickCreateNotes,
+  QuickCreateNotesTemplate,
   HideConnectionIndicator,
   CodeBlockStyle,
 } from "@/app/_types";
@@ -42,6 +43,8 @@ import {
   generalSettingsSchema,
 } from "@/app/_schemas/user-schemas";
 import { DeleteAccountModal } from "@/app/_components/GlobalComponents/Modals/UserModals/DeleteAccountModal";
+import { NoteTemplateManager } from "@/app/_components/FeatureComponents/Templates/NoteTemplateManager";
+import { getAvailableNoteTemplates } from "@/app/_utils/note-template-utils";
 
 interface SettingsTabProps {
   noteCategories: Category[];
@@ -69,6 +72,7 @@ const getSettingsFromUser = (user: SanitisedUser | null): Partial<SanitisedUser>
   defaultNoteFilter: user?.defaultNoteFilter || "all",
   quickCreateNotes: user?.quickCreateNotes || "disable",
   quickCreateNotesCategory: user?.quickCreateNotesCategory || "",
+  quickCreateNotesTemplate: user?.quickCreateNotesTemplate || "",
   hideConnectionIndicator: user?.hideConnectionIndicator || "disable",
   codeBlockStyle: user?.codeBlockStyle || "default",
 });
@@ -88,7 +92,7 @@ const pick = <T extends object, K extends keyof T>(
 
 export const UserPreferencesTab = ({ noteCategories, localeOptions }: SettingsTabProps) => {
   const t = useTranslations();
-  const { isDemoMode, user, setUser } = useAppMode();
+  const { isDemoMode, user, setUser, appSettings } = useAppMode();
   const router = useRouter();
   const { showToast } = useToast();
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -156,6 +160,7 @@ export const UserPreferencesTab = ({ noteCategories, localeOptions }: SettingsTa
     "codeBlockStyle",
     "quickCreateNotes",
     "quickCreateNotesCategory",
+    "quickCreateNotesTemplate",
   ]);
   const hasChecklistsChanges = hasChanges([
     "enableRecurrence",
@@ -328,6 +333,18 @@ export const UserPreferencesTab = ({ noteCategories, localeOptions }: SettingsTa
     { id: "all", name: t('notes.allNotes') },
     { id: "recent", name: t('notes.recent') },
     { id: "pinned", name: t('common.pinned') },
+  ];
+  const availableNoteTemplates = getAvailableNoteTemplates({
+    adminTemplates: appSettings?.noteTemplates,
+    userTemplates: user?.noteTemplates,
+    hiddenTemplateIds: user?.hiddenNoteTemplateIds,
+  });
+  const quickCreateTemplateOptions = [
+    { id: "", name: "Use instance default" },
+    ...availableNoteTemplates.map((template) => ({
+      id: template.id,
+      name: template.name || (template.nameKey ? t(template.nameKey) : template.id),
+    })),
   ];
 
   return (
@@ -576,6 +593,7 @@ export const UserPreferencesTab = ({ noteCategories, localeOptions }: SettingsTa
                   "codeBlockStyle",
                   "quickCreateNotes",
                   "quickCreateNotesCategory",
+                  "quickCreateNotesTemplate",
                 ],
                 editorSettingsSchema,
                 "Notes Preferences"
@@ -808,25 +826,58 @@ export const UserPreferencesTab = ({ noteCategories, localeOptions }: SettingsTa
         </div>
 
         {currentSettings.quickCreateNotes === "enable" && (
-          <div className="space-y-2">
-            <Label htmlFor="quick-create-notes-category">
-              {t('settings.defaultCategory')}
-            </Label>
-            <CategoryTreeSelector
-              categories={noteCategories}
-              selectedCategory={currentSettings.quickCreateNotesCategory || ""}
-              onCategorySelect={(value) =>
-                handleSettingChange("quickCreateNotesCategory", value)
-              }
-              placeholder={t('settings.selectDefaultCategory')}
-              className="w-full"
-            />
-            <p className="text-md lg:text-sm text-muted-foreground">
-              {t('settings.defaultCategoryDescription')}
-            </p>
-          </div>
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="quick-create-notes-category">
+                {t('settings.defaultCategory')}
+              </Label>
+              <CategoryTreeSelector
+                categories={noteCategories}
+                selectedCategory={currentSettings.quickCreateNotesCategory || ""}
+                onCategorySelect={(value) =>
+                  handleSettingChange("quickCreateNotesCategory", value)
+                }
+                placeholder={t('settings.selectDefaultCategory')}
+                className="w-full"
+              />
+              <p className="text-md lg:text-sm text-muted-foreground">
+                {t('settings.defaultCategoryDescription')}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="quick-create-notes-template">
+                {t('settings.defaultTemplate')}
+              </Label>
+              <Dropdown
+                value={currentSettings.quickCreateNotesTemplate || ""}
+                onChange={(value) =>
+                  handleSettingChange(
+                    "quickCreateNotesTemplate",
+                    value as QuickCreateNotesTemplate,
+                  )
+                }
+                options={quickCreateTemplateOptions}
+                placeholder={t('settings.selectDefaultTemplate')}
+                className="w-full"
+              />
+              <p className="text-md lg:text-sm text-muted-foreground">
+                {t('settings.defaultTemplateDescription')}
+              </p>
+            </div>
+          </>
         )}
 
+      </FormWrapper>
+
+      <FormWrapper title="Note Templates">
+        <NoteTemplateManager
+          scope="user"
+          adminTemplates={appSettings?.noteTemplates || []}
+          userTemplates={user?.noteTemplates || []}
+          hiddenTemplateIds={user?.hiddenNoteTemplateIds || []}
+          defaultTemplateId={appSettings?.defaultNoteTemplateId || "blank"}
+        />
       </FormWrapper>
 
       <FormWrapper

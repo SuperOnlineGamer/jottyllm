@@ -1,15 +1,57 @@
 import { NextRequest, NextResponse } from "next/server";
 import { withApiAuth } from "@/app/_utils/api-utils";
 import { getUserNotes, createNote } from "@/app/_server/actions/note";
+import {
+  matchesNoteSearchQuery,
+  parseSearchQuery,
+} from "@/app/_utils/search-query-utils";
 
 export const dynamic = "force-dynamic";
+
+const appendTagsToFormData = (formData: FormData, tags: unknown) => {
+  if (tags === undefined) return;
+  formData.append("tags", Array.isArray(tags) ? JSON.stringify(tags) : String(tags));
+};
+
+const transformNoteForApi = (note: any, fallbackContent?: string) => ({
+  id: note?.uuid || note?.id,
+  title: note?.title,
+  category: note?.category || "Uncategorized",
+  content: note?.content || fallbackContent || "",
+  tags: note?.tags || [],
+  reminders: note?.reminders || [],
+  linkedTasks: note?.linkedTasks || [],
+  comments: note?.comments || [],
+  encrypted: Boolean(note?.encrypted),
+  createdAt: note?.createdAt,
+  updatedAt: note?.updatedAt,
+  owner: note?.owner,
+});
 
 export async function GET(request: NextRequest) {
   return withApiAuth(request, async (user) => {
     try {
       const { searchParams } = new URL(request.url);
       const category = searchParams.get("category");
-      const search = searchParams.get("q");
+      const search = searchParams.get("q") || "";
+      const tag = searchParams.get("tag");
+      const color = searchParams.get("color");
+      const created = searchParams.get("created");
+      const updated = searchParams.get("updated");
+      const reminder = searchParams.get("reminder");
+      const due = searchParams.get("due");
+      const structuredQuery = [
+        search,
+        tag ? `tag:"${tag.replace(/"/g, "")}"` : "",
+        color ? `color:"${color.replace(/"/g, "")}"` : "",
+        created ? `created:"${created.replace(/"/g, "")}"` : "",
+        updated ? `updated:"${updated.replace(/"/g, "")}"` : "",
+        reminder ? `reminder:"${reminder.replace(/"/g, "")}"` : "",
+        due ? `due:"${due.replace(/"/g, "")}"` : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+      const parsedQuery = parseSearchQuery(structuredQuery);
 
       const notes = await getUserNotes({ username: user.username });
       if (!notes.success || !notes.data) {
@@ -26,23 +68,15 @@ export async function GET(request: NextRequest) {
           (note) => note.category === category
         );
       }
-      if (search) {
-        const searchLower = search.toLowerCase();
-        filteredNotes = filteredNotes.filter(
-          (note) =>
-            note.title?.toLowerCase().includes(searchLower) ||
-            note.content?.toLowerCase().includes(searchLower)
+      if (structuredQuery.trim()) {
+        filteredNotes = filteredNotes.filter((note) =>
+          matchesNoteSearchQuery(note, parsedQuery, user.tagColors),
         );
       }
 
-      const transformedNotes = filteredNotes.map((note) => ({
-        id: note.uuid || note.id,
-        title: note.title,
-        category: note.category || "Uncategorized",
-        content: note.content,
-        createdAt: note.createdAt,
-        updatedAt: note.updatedAt,
-      }));
+      const transformedNotes = filteredNotes.map((note) =>
+        transformNoteForApi(note),
+      );
 
       return NextResponse.json({ notes: transformedNotes });
     } catch (error) {
@@ -63,6 +97,7 @@ export async function POST(request: NextRequest) {
         title,
         content = "",
         category = "Uncategorized",
+        tags,
       } = body;
 
       if (!title) {
@@ -77,21 +112,14 @@ export async function POST(request: NextRequest) {
       formData.append("rawContent", content);
       formData.append("category", category);
       formData.append("user", JSON.stringify(user));
+      appendTagsToFormData(formData, tags);
 
       const result = await createNote(formData);
       if (result.error) {
         return NextResponse.json({ error: result.error }, { status: 400 });
       }
 
-      const transformedNote = {
-        id: result.data?.uuid || result.data?.id,
-        title: result.data?.title,
-        category: result.data?.category || "Uncategorized",
-        content: result.data?.content || content,
-        createdAt: result.data?.createdAt,
-        updatedAt: result.data?.updatedAt,
-        owner: result.data?.owner,
-      };
+      const transformedNote = transformNoteForApi(result.data, content);
 
       return NextResponse.json({ success: true, data: transformedNote });
     } catch (error) {

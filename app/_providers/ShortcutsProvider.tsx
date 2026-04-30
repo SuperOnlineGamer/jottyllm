@@ -13,7 +13,7 @@ import { CreateNoteModal } from "@/app/_components/GlobalComponents/Modals/Notes
 import { CreateListModal } from "@/app/_components/GlobalComponents/Modals/ChecklistModals/CreateListModal";
 import { CreateCategoryModal } from "@/app/_components/GlobalComponents/Modals/CategoryModals/CreateCategoryModal";
 import { SettingsModal } from "@/app/_components/GlobalComponents/Modals/SettingsModals/Settings";
-import { Category, SanitisedUser, User } from "@/app/_types";
+import { Category, SanitisedUser } from "@/app/_types";
 import { Modes } from "@/app/_types/enums";
 import { buildCategoryPath } from "@/app/_utils/global-utils";
 import { useRouter } from "next/navigation";
@@ -21,6 +21,10 @@ import { useAppMode } from "./AppModeProvider";
 import { useNavigationGuard } from "./NavigationGuardProvider";
 import { createNote } from "@/app/_server/actions/note";
 import { generateDateTimeTitle } from "../_utils/date-utils";
+import {
+  applyNoteTemplate,
+  getAvailableNoteTemplates,
+} from "@/app/_utils/note-template-utils";
 
 interface ShortcutContextType {
   openCreateNoteModal: (initialCategory?: string) => void;
@@ -51,7 +55,7 @@ export const ShortcutProvider = ({
   user: SanitisedUser | null;
 }) => {
   const router = useRouter();
-  const { mode, setMode } = useAppMode();
+  const { mode, setMode, appSettings } = useAppMode();
   const { checkNavigation } = useNavigationGuard();
 
   const [showCreateNoteModal, setShowCreateNoteModal] = useState(false);
@@ -64,6 +68,15 @@ export const ShortcutProvider = ({
   const [initialCategory, setInitialCategory] = useState<string>("");
   const [initialParentCategory, setInitialParentCategory] =
     useState<string>("");
+  const availableNoteTemplates = useMemo(
+    () =>
+      getAvailableNoteTemplates({
+        adminTemplates: appSettings?.noteTemplates,
+        userTemplates: user?.noteTemplates,
+        hiddenTemplateIds: user?.hiddenNoteTemplateIds,
+      }),
+    [appSettings?.noteTemplates, user?.hiddenNoteTemplateIds, user?.noteTemplates],
+  );
 
   const openCreateNoteModal = useCallback(
     async (category?: string) => {
@@ -71,11 +84,21 @@ export const ShortcutProvider = ({
         const title = generateDateTimeTitle();
         const defaultCategory =
           category || user?.quickCreateNotesCategory || "";
+        const templatePayload = applyNoteTemplate(
+          user?.quickCreateNotesTemplate || appSettings?.defaultNoteTemplateId || "blank",
+          {
+            title,
+            category: defaultCategory || "Uncategorized",
+            username: user?.username || "",
+          },
+          availableNoteTemplates,
+        );
 
         const formData = new FormData();
-        formData.append("title", title);
+        formData.append("title", templatePayload.title || title);
         formData.append("category", defaultCategory);
-        formData.append("content", "");
+        formData.append("rawContent", templatePayload.content);
+        formData.append("tags", JSON.stringify(templatePayload.tags));
 
         const result = await createNote(formData);
 
@@ -92,7 +115,15 @@ export const ShortcutProvider = ({
         setShowCreateNoteModal(true);
       }
     },
-    [user?.quickCreateNotes, user?.quickCreateNotesCategory, router]
+    [
+      user?.quickCreateNotes,
+      user?.quickCreateNotesCategory,
+      user?.quickCreateNotesTemplate,
+      user?.username,
+      appSettings?.defaultNoteTemplateId,
+      availableNoteTemplates,
+      router,
+    ]
   );
 
   const openCreateChecklistModal = useCallback((category?: string) => {
