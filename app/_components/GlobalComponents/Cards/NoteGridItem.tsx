@@ -11,6 +11,7 @@ import { useMemo } from "react";
 import { parseNoteContent } from "@/app/_utils/client-parser-utils";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { NoteTagChips } from "@/app/_components/FeatureComponents/Tags/TagChip";
 
 interface NoteGridItemProps {
   note: Note;
@@ -120,6 +121,14 @@ export const NoteGridItem = ({
           {sharer && <span className="truncate">{sharer}</span>}
           {!sharer && categoryName && <span className="truncate">{categoryName}</span>}
         </div>
+        {note.tags && note.tags.length > 0 && (
+          <NoteTagChips
+            tags={note.tags}
+            maxVisible={2}
+            compact
+            className="mt-2 justify-center"
+          />
+        )}
       </div>
     </div>
   );

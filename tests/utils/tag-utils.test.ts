@@ -4,12 +4,15 @@ import {
   getAncestorTags,
   getParentTag,
   getDisplayName,
+  getTagColor,
+  normalizeTagList,
   buildTagsIndex,
   extractHashtagsFromContent,
   tagMatchesFilter,
   getAllUniqueTags,
   buildTagTree,
   getChildTags,
+  normalizeTagColorOverrides,
 } from "@/app/_utils/tag-utils";
 
 describe("Tag Utils", () => {
@@ -32,6 +35,21 @@ describe("Tag Utils", () => {
 
     it("should handle nested tags", () => {
       expect(normalizeTag("#work/project")).toBe("work/project");
+    });
+  });
+
+  describe("normalizeTagList", () => {
+    it("should normalize and sort tag lists", () => {
+      expect(normalizeTagList(["#Work", "personal", "work"])).toEqual([
+        "personal",
+        "work",
+      ]);
+    });
+
+    it("should remove invalid tag names", () => {
+      expect(normalizeTagList(["work", "bad//tag", "bad/"])).toEqual([
+        "work",
+      ]);
     });
   });
 
@@ -81,6 +99,49 @@ describe("Tag Utils", () => {
 
     it("should return last segment for deeply nested tags", () => {
       expect(getDisplayName("work/project/2024")).toBe("2024");
+    });
+  });
+
+  describe("getTagColor", () => {
+    it("should return stable colors for the same tag", () => {
+      expect(getTagColor("work")).toEqual(getTagColor("work"));
+    });
+
+    it("should normalize tags before choosing colors", () => {
+      expect(getTagColor("#Work")).toEqual(getTagColor("work"));
+    });
+
+    it("should keep nested tags in the same color family as their root tag", () => {
+      expect(getTagColor("work/project")).toEqual(getTagColor("work"));
+    });
+
+    it("should use exact custom colors before root custom colors", () => {
+      expect(
+        getTagColor("work/project", {
+          work: "#22c55e",
+          "work/project": "#ef4444",
+        }).foreground,
+      ).toBe("#ef4444");
+    });
+
+    it("should use root custom colors for nested tags", () => {
+      expect(getTagColor("work/project", { work: "#22c55e" }).foreground).toBe(
+        "#22c55e",
+      );
+    });
+  });
+
+  describe("normalizeTagColorOverrides", () => {
+    it("should normalize tag keys and color values", () => {
+      expect(normalizeTagColorOverrides({ "#Work": "#EF4444" })).toEqual({
+        work: "#ef4444",
+      });
+    });
+
+    it("should remove invalid tag colors", () => {
+      expect(
+        normalizeTagColorOverrides({ work: "red", project: "#22c55e" }),
+      ).toEqual({ project: "#22c55e" });
     });
   });
 
@@ -286,6 +347,22 @@ describe("Tag Utils", () => {
       expect(index["work"].displayName).toBe("work");
       expect(index["work/project"].displayName).toBe("project");
     });
+
+    it("should attach deterministic color metadata to each tag", () => {
+      const notes = [{ uuid: "note1", tags: ["work/project"] }];
+      const index = buildTagsIndex(notes);
+
+      expect(index["work"].color).toEqual(getTagColor("work"));
+      expect(index["work/project"].color).toEqual(getTagColor("work/project"));
+    });
+
+    it("should use custom tag colors when building the index", () => {
+      const notes = [{ uuid: "note1", tags: ["work/project"] }];
+      const index = buildTagsIndex(notes, [], { work: "#22c55e" });
+
+      expect(index["work"].color.foreground).toBe("#22c55e");
+      expect(index["work/project"].color.foreground).toBe("#22c55e");
+    });
   });
 
   describe("tagMatchesFilter", () => {
@@ -311,6 +388,10 @@ describe("Tag Utils", () => {
 
     it("should handle tags with leading hash", () => {
       expect(tagMatchesFilter("#work", "work")).toBe(true);
+    });
+
+    it("should handle filters with leading hash", () => {
+      expect(tagMatchesFilter("Work/Project", "#work")).toBe(true);
     });
 
     it("should match deeply nested children", () => {

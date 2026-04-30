@@ -410,6 +410,7 @@
     "charCount": "{count, plural, one {# character} other {# characters}}",
     "readingTime": "{count, plural, one {# minute read} other {# minutes read}}",
     "tags": "Tags",
+    "addTag": "Add tag...",
     "noTagsFound": "No tags found",
     "searchTags": "Search tags..."
   },

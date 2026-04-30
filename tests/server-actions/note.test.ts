@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import path from "path";
 import {
   resetAllMocks,
   createFormData,
@@ -102,6 +103,19 @@ vi.mock("@/app/_utils/markdown-utils", () => ({
 vi.mock("@/app/_utils/tag-utils", () => ({
   extractHashtagsFromContent: (...args: any[]) =>
     mockExtractHashtagsFromContent(...args),
+  normalizeTagList: (tags?: unknown) => {
+    if (!Array.isArray(tags)) return [];
+    return Array.from(
+      new Set(
+        tags
+          .filter((tag): tag is string => typeof tag === "string")
+          .map((tag) => tag.toLowerCase().trim().replace(/^#/, ""))
+          .filter(
+            (tag) => tag && !tag.includes("//") && !tag.endsWith("/"),
+          ),
+      ),
+    ).sort();
+  },
 }));
 
 vi.mock("@/app/_utils/encryption-utils", () => ({
@@ -461,6 +475,54 @@ describe("Note Actions", () => {
         mockExtractTitle.mockReturnValue("Test Note");
       };
 
+      it("should preserve the existing category when the submitted category is blank", async () => {
+        setupUpdateNoteMocks();
+
+        const formData = createFormData({
+          id: "test-note",
+          uuid: "test-uuid-123",
+          title: "Test Note",
+          content: "Content without category changes",
+          category: " ",
+          originalCategory: "TestCategory",
+        });
+
+        const result = await updateNote(formData);
+
+        expect(result.success).toBe(true);
+        expect(result.data?.category).toBe("TestCategory");
+        expect(mockServerWriteFile).toHaveBeenCalledWith(
+          path.join("data", "notes", "testuser", "TestCategory", "test-note.md"),
+          expect.any(String),
+        );
+        expect(mockServerDeleteFile).not.toHaveBeenCalled();
+      });
+
+      it("should move the note file when the submitted category changes", async () => {
+        setupUpdateNoteMocks();
+
+        const formData = createFormData({
+          id: "test-note",
+          uuid: "test-uuid-123",
+          title: "Test Note",
+          content: "Content moved to another category",
+          category: "NewCategory",
+          originalCategory: "TestCategory",
+        });
+
+        const result = await updateNote(formData);
+
+        expect(result.success).toBe(true);
+        expect(result.data?.category).toBe("NewCategory");
+        expect(mockServerWriteFile).toHaveBeenCalledWith(
+          path.join("data", "notes", "testuser", "NewCategory", "test-note.md"),
+          expect.any(String),
+        );
+        expect(mockServerDeleteFile).toHaveBeenCalledWith(
+          path.join("data", "notes", "testuser", "TestCategory", "test-note.md"),
+        );
+      });
+
       it("should extract tags from updated content", async () => {
         setupUpdateNoteMocks();
         mockExtractHashtagsFromContent.mockReturnValue(["work", "project"]);
@@ -558,6 +620,112 @@ describe("Note Actions", () => {
         expect(result.success).toBe(true);
         expect(result.data?.tags).toHaveLength(1);
         expect(result.data?.tags?.[0]).toBe("duplicate");
+      });
+
+      it("should merge submitted metadata tags with content tags", async () => {
+        setupUpdateNoteMocks();
+        mockExtractHashtagsFromContent.mockReturnValue(["content-tag"]);
+
+        const formData = createFormData({
+          id: "test-note",
+          uuid: "test-uuid-123",
+          title: "Test Note",
+          content: "Content with #content-tag",
+          category: "TestCategory",
+          originalCategory: "TestCategory",
+          tags: JSON.stringify(["#Manual", "content-tag"]),
+        });
+
+        const result = await updateNote(formData);
+
+        expect(result.success).toBe(true);
+        expect(result.data?.tags).toEqual(["content-tag", "manual"]);
+      });
+
+      it("should preserve existing metadata tags when no tag payload is submitted", async () => {
+        setupUpdateNoteMocks();
+        mockGetNoteById.mockResolvedValue({
+          id: "test-note",
+          uuid: "test-uuid-123",
+          title: "Test Note",
+          category: "TestCategory",
+          owner: "testuser",
+          content: "Existing content",
+          tags: ["existing"],
+        });
+        mockExtractHashtagsFromContent.mockReturnValue([]);
+
+        const formData = createFormData({
+          id: "test-note",
+          uuid: "test-uuid-123",
+          title: "Test Note",
+          content: "Content without visible hashtags",
+          category: "TestCategory",
+          originalCategory: "TestCategory",
+        });
+
+        const result = await updateNote(formData);
+
+        expect(result.success).toBe(true);
+        expect(result.data?.tags).toEqual(["existing"]);
+      });
+
+      it("should preserve existing metadata tags when a blank tag payload is submitted", async () => {
+        setupUpdateNoteMocks();
+        mockGetNoteById.mockResolvedValue({
+          id: "test-note",
+          uuid: "test-uuid-123",
+          title: "Test Note",
+          category: "TestCategory",
+          owner: "testuser",
+          content: "Existing content",
+          tags: ["existing"],
+        });
+        mockExtractHashtagsFromContent.mockReturnValue([]);
+
+        const formData = createFormData({
+          id: "test-note",
+          uuid: "test-uuid-123",
+          title: "Test Note",
+          content: "Content without visible hashtags",
+          category: "TestCategory",
+          originalCategory: "TestCategory",
+          tags: " ",
+        });
+
+        const result = await updateNote(formData);
+
+        expect(result.success).toBe(true);
+        expect(result.data?.tags).toEqual(["existing"]);
+      });
+
+      it("should remove existing metadata tags when an empty tag payload is submitted", async () => {
+        setupUpdateNoteMocks();
+        mockGetNoteById.mockResolvedValue({
+          id: "test-note",
+          uuid: "test-uuid-123",
+          title: "Test Note",
+          category: "TestCategory",
+          owner: "testuser",
+          content: "Existing content",
+          tags: ["existing"],
+        });
+        mockExtractHashtagsFromContent.mockReturnValue([]);
+
+        const formData = createFormData({
+          id: "test-note",
+          uuid: "test-uuid-123",
+          title: "Test Note",
+          content: "Content without visible hashtags",
+          category: "TestCategory",
+          originalCategory: "TestCategory",
+          tags: JSON.stringify([]),
+        });
+
+        const result = await updateNote(formData);
+
+        expect(result.success).toBe(true);
+        expect(result.data?.tags).toBeUndefined();
       });
     });
 

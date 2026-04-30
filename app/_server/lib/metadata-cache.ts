@@ -11,6 +11,12 @@ function invalidateDir(dir: string) {
   dirToKeys.get(dir)?.forEach((key) => store.delete(key));
 }
 
+export function invalidateMetadataCacheForDir(dir: string) {
+  const abs = path.isAbsolute(dir) ? dir : path.join(process.cwd(), dir);
+  invalidateDir(abs);
+  invalidateDir(dir);
+}
+
 function startWatcher(dir: string) {
   if (watchers.has(dir)) return;
 

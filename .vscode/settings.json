@@ -2,5 +2,9 @@
     "i18n-ally.localesPaths": [
         "app/_translations"
     ],
-    "i18n-ally.keystyle": "nested"
+    "i18n-ally.keystyle": "nested",
+    "chat.tools.terminal.autoApprove": {
+        "npx tsc": true,
+        "npx eslint": true
+    }
 }

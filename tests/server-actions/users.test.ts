@@ -389,5 +389,24 @@ describe('Users Actions', () => {
         success: true,
       }))
     })
+
+    it('should normalize tag color settings before saving', async () => {
+      mockReadJsonFile.mockResolvedValue([
+        { username: 'testuser', passwordHash: 'hash', isAdmin: false },
+      ])
+
+      const result = await updateUserSettings({
+        tagColors: {
+          '#Work': '#EF4444',
+          invalid: 'red',
+        },
+      })
+
+      expect(result.success).toBe(true)
+      expect(mockWriteJsonFile).toHaveBeenCalledWith(
+        [expect.objectContaining({ tagColors: { work: '#ef4444' } })],
+        expect.any(String),
+      )
+    })
   })
 })

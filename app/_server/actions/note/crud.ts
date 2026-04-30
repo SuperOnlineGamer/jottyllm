@@ -18,7 +18,10 @@ import { revalidatePath } from "next/cache";
 import { NOTES_DIR } from "@/app/_consts/files";
 import { PermissionTypes, Modes } from "@/app/_types/enums";
 import { sanitizeMarkdown } from "@/app/_utils/markdown-utils";
-import { extractHashtagsFromContent } from "@/app/_utils/tag-utils";
+import {
+  extractHashtagsFromContent,
+  normalizeTagList,
+} from "@/app/_utils/tag-utils";
 import { buildCategoryPath, getFormData } from "@/app/_utils/global-utils";
 import {
   updateIndexForItem,
@@ -35,17 +38,42 @@ import {
 import { getSettings } from "@/app/_server/actions/config";
 import { logContentEvent } from "@/app/_server/actions/log";
 import { commitNote } from "@/app/_server/actions/history";
+import { invalidateMetadataCacheForDir } from "@/app/_server/lib/metadata-cache";
 import { noteToMarkdown, convertInternalLinksToNewFormat } from "./parsers";
 import { getNoteById } from "./queries";
 import { broadcast } from "@/app/_server/ws/broadcast";
 
+const DEFAULT_CATEGORY = "Uncategorized";
+
+const normalizeNoteCategory = (
+  category?: string | null,
+  fallback = DEFAULT_CATEGORY
+): string => {
+  const normalizedCategory = typeof category === "string" ? category.trim() : "";
+  const normalizedFallback = typeof fallback === "string" ? fallback.trim() : "";
+  return normalizedCategory || normalizedFallback || DEFAULT_CATEGORY;
+};
+
+const parseSubmittedTags = (tags?: string | null): string[] | null => {
+  if (typeof tags !== "string") return null;
+  if (tags.trim() === "") return null;
+
+  try {
+    const parsedTags = JSON.parse(tags);
+    return normalizeTagList(parsedTags);
+  } catch {
+    return normalizeTagList(tags.split(","));
+  }
+};
+
 export const createNote = async (formData: FormData) => {
   try {
-    const { title, category, rawContent, user } = getFormData(formData, [
+    const { title, category, rawContent, user, tags } = getFormData(formData, [
       "title",
       "category",
       "rawContent",
       "user",
+      "tags",
     ]);
     const formUser = user ? JSON.parse(user as string) : null;
 
@@ -61,8 +89,9 @@ export const createNote = async (formData: FormData) => {
       return { error: "Not authenticated" };
     }
 
+    const noteCategory = normalizeNoteCategory(category);
     const userDir = await getUserModeDir(Modes.NOTES, currentUser.username);
-    const categoryDir = path.join(userDir, category);
+    const categoryDir = path.join(userDir, noteCategory);
     await ensureDir(categoryDir);
 
     const fileRenameMode = currentUser?.fileRenameMode || "minimal";
@@ -75,25 +104,31 @@ export const createNote = async (formData: FormData) => {
     const id = path.basename(filename, ".md");
     const filePath = path.join(categoryDir, filename);
 
+    const submittedTags = parseSubmittedTags(tags);
     const extractedTags = extractHashtagsFromContent(content);
+    const sortedTags = normalizeTagList([
+      ...(submittedTags ?? []),
+      ...extractedTags,
+    ]);
 
     const newDoc: Note = {
       id,
       uuid: generateUuid(),
       title,
       content,
-      category,
+      category: noteCategory,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       owner: currentUser.username,
-      tags: extractedTags.length > 0 ? extractedTags : undefined,
+      tags: sortedTags.length > 0 ? sortedTags : undefined,
       encrypted: encrypted || undefined,
       encryptionMethod,
     };
 
     await serverWriteFile(filePath, noteToMarkdown(newDoc));
+    invalidateMetadataCacheForDir(userDir);
 
-    const relativePath = path.join(category, `${id}.md`);
+    const relativePath = path.join(noteCategory, `${id}.md`);
     if (!isEncrypted(content)) {
       commitNote(currentUser.username, relativePath, "create", title).catch(
         () => {}
@@ -144,7 +179,7 @@ export const createNote = async (formData: FormData) => {
 
 export const updateNote = async (formData: FormData, autosaveNotes = false) => {
   try {
-    const { id, title, content, category, originalCategory, user, uuid } =
+    const { id, title, content, category, originalCategory, user, uuid, tags } =
       getFormData(formData, [
         "id",
         "title",
@@ -153,6 +188,7 @@ export const updateNote = async (formData: FormData, autosaveNotes = false) => {
         "originalCategory",
         "user",
         "uuid",
+        "tags",
       ]);
     const settings = await getSettings();
 
@@ -173,25 +209,30 @@ export const updateNote = async (formData: FormData, autosaveNotes = false) => {
 
     const sanitizedContent = sanitizeMarkdown(content);
     const { contentWithoutMetadata } = stripYaml(sanitizedContent);
+    const lookupCategory = normalizeNoteCategory(originalCategory);
     const processedContent = settings?.editor?.enableBilateralLinks
       ? await convertInternalLinksToNewFormat(
           contentWithoutMetadata,
           currentUser,
-          originalCategory
+          lookupCategory
         )
       : contentWithoutMetadata;
 
     const convertedContent = processedContent;
 
-    const note = await getNoteById(uuid || id, originalCategory, undefined);
+    const note = await getNoteById(uuid || id, lookupCategory, undefined);
 
     if (!note) {
       throw new Error("Note not found");
     }
 
+    const currentCategory = normalizeNoteCategory(note.category, lookupCategory);
+    const nextCategory = normalizeNoteCategory(category, currentCategory);
+    const categoryChanged = nextCategory !== currentCategory;
+
     const canEdit = await checkUserPermission(
       note.uuid || id,
-      originalCategory,
+      currentCategory,
       "note",
       actingUsername,
       PermissionTypes.EDIT
@@ -204,14 +245,16 @@ export const updateNote = async (formData: FormData, autosaveNotes = false) => {
     const encryptionMethod =
       detectEncryptionMethod(convertedContent) || undefined;
 
+    const submittedTags = parseSubmittedTags(tags);
+    const baseTags = submittedTags ?? normalizeTagList(note.tags);
     const extractedTags = extractHashtagsFromContent(convertedContent);
-    const sortedTags = Array.from(new Set(extractedTags)).sort();
+    const sortedTags = normalizeTagList([...baseTags, ...extractedTags]);
 
     const updatedDoc = {
       ...note,
       title,
       content: convertedContent,
-      category: category || note.category,
+      category: nextCategory,
       updatedAt: new Date().toISOString(),
       encrypted: isEncrypted(convertedContent),
       encryptionMethod,
@@ -221,7 +264,7 @@ export const updateNote = async (formData: FormData, autosaveNotes = false) => {
     const ownerDir = NOTES_DIR(note.owner!);
     const categoryDir = path.join(
       ownerDir,
-      updatedDoc.category || "Uncategorized"
+      updatedDoc.category || DEFAULT_CATEGORY
     );
     await ensureDir(categoryDir);
 
@@ -249,36 +292,37 @@ export const updateNote = async (formData: FormData, autosaveNotes = false) => {
     const filePath = path.join(categoryDir, newFilename);
 
     let oldFilePath: string | null = null;
-    if (category && category !== note.category) {
+    if (categoryChanged) {
       oldFilePath = path.join(
         ownerDir,
-        note.category || "Uncategorized",
+        currentCategory,
         `${id}.md`
       );
     } else if (newId !== id) {
       oldFilePath = path.join(
         ownerDir,
-        note.category || "Uncategorized",
+        currentCategory,
         `${id}.md`
       );
     }
 
     await serverWriteFile(filePath, noteToMarkdown(updatedDoc));
+    invalidateMetadataCacheForDir(ownerDir);
 
     if (!autosaveNotes && !updatedDoc.encrypted) {
       const historyRelativePath = path.join(
-        updatedDoc.category || "Uncategorized",
+        updatedDoc.category || DEFAULT_CATEGORY,
         `${newId}.md`
       );
 
-      const isCategoryChange = category && category !== note.category;
+      const isCategoryChange = categoryChanged;
       const historyAction = isCategoryChange ? "move" : "update";
 
       const historyMetadata = isCategoryChange
         ? {
-            oldCategory: note.category || "Uncategorized",
-            newCategory: updatedDoc.category || "Uncategorized",
-            oldPath: path.join(note.category || "Uncategorized", `${id}.md`),
+            oldCategory: currentCategory,
+            newCategory: updatedDoc.category || DEFAULT_CATEGORY,
+            oldPath: path.join(currentCategory, `${id}.md`),
           }
         : undefined;
 
@@ -294,11 +338,11 @@ export const updateNote = async (formData: FormData, autosaveNotes = false) => {
     if (settings?.editor?.enableBilateralLinks) {
       try {
         const links = (await parseInternalLinks(updatedDoc.content)) || [];
-        const newItemKey = `${updatedDoc.category || "Uncategorized"}/${
+        const newItemKey = `${updatedDoc.category || DEFAULT_CATEGORY}/${
           updatedDoc.id
         }`;
 
-        const oldItemKey = `${note.category || "Uncategorized"}/${id}`;
+        const oldItemKey = `${currentCategory}/${id}`;
 
         if (oldItemKey !== newItemKey) {
           await rebuildLinkIndex(note.owner!);
@@ -315,7 +359,7 @@ export const updateNote = async (formData: FormData, autosaveNotes = false) => {
       }
     }
 
-    if (newId !== id || (category && category !== note.category)) {
+    if (newId !== id || categoryChanged) {
       const { updateSharingData } = await import(
         "@/app/_server/actions/sharing"
       );
@@ -323,13 +367,13 @@ export const updateNote = async (formData: FormData, autosaveNotes = false) => {
       await updateSharingData(
         {
           id,
-          category: note.category || "Uncategorized",
+          category: currentCategory,
           itemType: "note",
           sharer: note.owner!,
         },
         {
           id: newId,
-          category: updatedDoc.category || "Uncategorized",
+          category: updatedDoc.category || DEFAULT_CATEGORY,
           itemType: "note",
           sharer: note.owner!,
         }
@@ -338,23 +382,24 @@ export const updateNote = async (formData: FormData, autosaveNotes = false) => {
 
     if (oldFilePath && oldFilePath !== filePath) {
       await serverDeleteFile(oldFilePath);
+      invalidateMetadataCacheForDir(ownerDir);
     }
 
     try {
       if (!autosaveNotes) {
         revalidatePath("/");
         const oldCategoryPath = buildCategoryPath(
-          note.category || "Uncategorized",
+          currentCategory,
           id
         );
         const newCategoryPath = buildCategoryPath(
-          updatedDoc.category || "Uncategorized",
+          updatedDoc.category || DEFAULT_CATEGORY,
           newId !== id ? newId : id
         );
 
         revalidatePath(`/note/${oldCategoryPath}`);
 
-        if (newId !== id || note.category !== updatedDoc.category) {
+        if (newId !== id || categoryChanged) {
           revalidatePath(`/note/${newCategoryPath}`);
         }
       }
@@ -440,15 +485,16 @@ export const deleteNote = async (formData: FormData, username?: string) => {
     const ownerDir = NOTES_DIR(ownerUsername);
     const filePath = path.join(
       ownerDir,
-      note.category || "Uncategorized",
+      note.category || DEFAULT_CATEGORY,
       `${note.id}.md`
     );
 
     await serverDeleteFile(filePath);
+    invalidateMetadataCacheForDir(ownerDir);
 
     if (!note.encrypted) {
       const deleteRelativePath = path.join(
-        note.category || "Uncategorized",
+        note.category || DEFAULT_CATEGORY,
         `${note.id}.md`
       );
       commitNote(
@@ -484,7 +530,7 @@ export const deleteNote = async (formData: FormData, username?: string) => {
     try {
       revalidatePath("/");
       const categoryPath = buildCategoryPath(
-        note.category || "Uncategorized",
+        note.category || DEFAULT_CATEGORY,
         note.id
       );
       revalidatePath(`/note/${categoryPath}`);
@@ -544,8 +590,8 @@ export const cloneNote = async (formData: FormData) => {
     const isOwnedByCurrentUser =
       !note.owner || note.owner === currentUser?.username;
     const finalTargetCategory = isOwnedByCurrentUser
-      ? targetCategory || "Uncategorized"
-      : "Uncategorized";
+      ? normalizeNoteCategory(targetCategory)
+      : DEFAULT_CATEGORY;
 
     const categoryDir = path.join(userDir, finalTargetCategory);
     await ensureDir(categoryDir);
@@ -569,6 +615,7 @@ export const cloneNote = async (formData: FormData) => {
     });
 
     await serverWriteFile(filePath, updatedContent);
+    invalidateMetadataCacheForDir(userDir);
 
     const newId = path.basename(filename, ".md");
     const clonedNote = await getNoteById(

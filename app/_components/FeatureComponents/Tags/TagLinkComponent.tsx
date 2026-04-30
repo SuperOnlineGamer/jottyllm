@@ -7,7 +7,11 @@ import { NodeViewWrapper } from "@tiptap/react";
 import { useAppMode } from "@/app/_providers/AppModeProvider";
 import { TagHoverCard } from "@/app/_components/FeatureComponents/Tags/TagHoverCard";
 import { Note } from "@/app/_types";
-import { normalizeTag, tagMatchesFilter } from "@/app/_utils/tag-utils";
+import {
+  getTagColor,
+  normalizeTag,
+  tagMatchesFilter,
+} from "@/app/_utils/tag-utils";
 
 interface TagLinkComponentProps {
   node: {
@@ -16,6 +20,15 @@ interface TagLinkComponentProps {
     };
   };
 }
+
+const getTagPillStyle = (tag: string, tagInfo?: { color?: ReturnType<typeof getTagColor> }) => {
+  const tagColor = tagInfo?.color ?? getTagColor(tag);
+  return {
+    color: tagColor.foreground,
+    backgroundColor: tagColor.background,
+    borderColor: tagColor.border,
+  };
+};
 
 export const TagLinkComponent = ({ node }: TagLinkComponentProps) => {
   const { tag } = node.attrs;
@@ -96,7 +109,8 @@ export const TagLinkComponent = ({ node }: TagLinkComponentProps) => {
         : null}
       <span
         data-tag={tag}
-        className="text-primary underline underline-offset-2 hover:no-underline"
+        style={getTagPillStyle(normalizedTag, tagInfo)}
+        className="inline-flex max-w-full items-center rounded-full border px-1.5 py-0.5 align-baseline text-sm lg:text-xs font-medium leading-none no-underline transition-colors hover:brightness-95"
       >
         #{tag}
       </span>
@@ -185,7 +199,8 @@ export const TagLinkViewComponent = ({ tag }: TagLinkViewComponentProps) => {
         : null}
       <span
         data-tag={tag}
-        className="text-primary underline underline-offset-2 hover:no-underline"
+        style={getTagPillStyle(normalizedTag, tagInfo)}
+        className="inline-flex max-w-full items-center rounded-full border px-1.5 py-0.5 align-baseline text-sm lg:text-xs font-medium leading-none no-underline transition-colors hover:brightness-95"
       >
         #{tag}
       </span>

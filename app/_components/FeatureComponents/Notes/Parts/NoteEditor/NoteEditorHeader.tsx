@@ -58,6 +58,7 @@ import {
 import { useTranslations } from "next-intl";
 import { NoteHistoryModal } from "@/app/_components/GlobalComponents/Modals/NotesModal/NoteHistoryModal";
 import { useToast } from "@/app/_providers/ToastProvider";
+import { NoteTagEditor } from "@/app/_components/FeatureComponents/Tags/TagChip";
 
 interface NoteEditorHeaderProps {
   note: Note;
@@ -679,6 +680,18 @@ export const NoteEditorHeader = ({
             )}
           </div>
         </div>
+        {appSettings?.editor?.enableTags !== false &&
+          (isEditing || viewModel.tags.length > 0) && (
+            <div className="mt-2 pl-11 pr-1">
+              <NoteTagEditor
+                tags={viewModel.tags}
+                isEditing={isEditing && (!note?.encrypted || isEditingEncrypted)}
+                onAddTag={viewModel.handleAddTag}
+                onRemoveTag={viewModel.handleRemoveTag}
+                disabled={status.isSaving || status.isAutoSaving}
+              />
+            </div>
+          )}
       </div>
       {showShareModal && (
         <ShareModal

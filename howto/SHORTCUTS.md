@@ -27,6 +27,7 @@ These shortcuts are available when the note editor is focused. They allow you to
 
 | Shortcut                                                                 | Action                         |
 | :----------------------------------------------------------------------- | :----------------------------- |
+| <kbd>⌘ Cmd</kbd> + <kbd>S</kbd>                                          | Saves the document             |
 | <kbd>⌘ Cmd</kbd> + <kbd>Shift</kbd> + <kbd>S</kbd>                       | Saves the document             |
 | <kbd>⌘ Cmd</kbd> + <kbd>Shift</kbd> + <kbd>E</kbd>                       | Enter/Exit edit mode           |
 | <kbd>⌘ Cmd</kbd> + <kbd>Shift</kbd> + <kbd>⌥ Option</kbd> + <kbd>M</kbd> | Enter/Exit markdown mode       |

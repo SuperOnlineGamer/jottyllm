@@ -13,7 +13,7 @@ export type {
   Checklist,
 } from "./checklist";
 
-export type { Note, NoteEditorViewModel } from "./note";
+export type { Note, NoteEditorViewModel, NoteSaveOptions } from "./note";
 
 export type {
   User,
@@ -39,6 +39,7 @@ export type {
   HideConnectionIndicator,
   CodeBlockStyle,
   ChecklistItemClickAction,
+  TagColorOverrides,
 } from "./user";
 
 export type {
@@ -57,7 +58,7 @@ export type { Category } from "./category";
 
 export type { ItemLinks, LinkIndex } from "./links";
 
-export type { TagInfo, TagsIndex } from "./tags";
+export type { TagColor, TagInfo, TagsIndex } from "./tags";
 
 export type {
   EncryptionMethod,

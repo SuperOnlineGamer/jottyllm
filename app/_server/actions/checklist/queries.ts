@@ -20,6 +20,7 @@ import { readListsRecursively, type ChecklistReadResult } from "./readers";
 import { checkAndRefreshRecurringItems } from "./parsers";
 import { isDebugFlag } from "@/app/_utils/env-utils";
 import { getOrCompute, metaCacheKey } from "@/app/_server/lib/metadata-cache";
+import { tagMatchesFilter } from "@/app/_utils/tag-utils";
 
 export const getUserChecklists = async (options: GetChecklistsOptions = {}) => {
   const {
@@ -170,10 +171,7 @@ export const getUserChecklists = async (options: GetChecklistsOptions = {}) => {
       } else if (filter.type === "tag") {
         lists = lists.filter((list: any) => {
           const listTags = list.tags || [];
-          return listTags.some(
-            (tag: string) =>
-              tag === filter.value || tag.startsWith(filter.value + "/"),
-          );
+          return listTags.some((tag: string) => tagMatchesFilter(tag, filter.value));
         });
       }
     }

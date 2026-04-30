@@ -17,6 +17,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { parseNoteContent } from "@/app/_utils/client-parser-utils";
 import { UserAvatar } from "@/app/_components/GlobalComponents/User/UserAvatar";
 import { useTranslations } from "next-intl";
+import { NoteTagChips } from "@/app/_components/FeatureComponents/Tags/TagChip";
 
 interface NoteCardProps {
   note: Note;
@@ -184,6 +185,10 @@ export const NoteCard = ({
           )}
         </div>
       </div>
+
+      {note.tags && note.tags.length > 0 && (
+        <NoteTagChips tags={note.tags} className="px-4 pb-3" />
+      )}
 
       <div className="px-4 py-3 bg-muted/30 border-t border-border/50">
         <div className="jotty-note-card-footer flex items-center justify-between text-sm lg:text-xs text-muted-foreground">

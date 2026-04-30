@@ -96,6 +96,11 @@ export const NoteClient = ({ note, categories }: NoteClientProps) => {
     {
       code: "KeyS",
       modKey: true,
+      handler: () => viewModel.handleSave(),
+    },
+    {
+      code: "KeyS",
+      modKey: true,
       shiftKey: true,
       handler: () => viewModel.handleSave(),
     },

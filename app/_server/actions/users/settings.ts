@@ -6,6 +6,7 @@ import { Result, User } from "@/app/_types";
 import { logUserEvent, logAudit } from "@/app/_server/actions/log";
 import { getUserIndex } from "./helpers";
 import { getCurrentUser } from "./queries";
+import { normalizeTagColorOverrides } from "@/app/_utils/tag-utils";
 
 export const updateUserSettings = async (
   settings: Partial<User>
@@ -23,7 +24,8 @@ export const updateUserSettings = async (
     const updates: Partial<User> = {};
     for (const [key, value] of Object.entries(settings)) {
       if (value !== undefined) {
-        (updates as any)[key] = value;
+        (updates as any)[key] =
+          key === "tagColors" ? normalizeTagColorOverrides(value as any) : value;
       }
     }
 

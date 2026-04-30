@@ -18,6 +18,7 @@ import {
 import { readNotesRecursively } from "./readers";
 import { isDebugFlag } from "@/app/_utils/env-utils";
 import { getOrCompute, metaCacheKey } from "@/app/_server/lib/metadata-cache";
+import { tagMatchesFilter } from "@/app/_utils/tag-utils";
 
 export const getAllNotes = async (allowArchived?: boolean) => {
   try {
@@ -342,10 +343,7 @@ export const getUserNotes = async (options: GetNotesOptions = {}) => {
       } else if (filter.type === "tag") {
         filteredNotes = notes.filter((note: any) => {
           const noteTags = note.tags || [];
-          return noteTags.some(
-            (tag: string) =>
-              tag === filter.value || tag.startsWith(filter.value + "/"),
-          );
+          return noteTags.some((tag: string) => tagMatchesFilter(tag, filter.value));
         });
       }
     }

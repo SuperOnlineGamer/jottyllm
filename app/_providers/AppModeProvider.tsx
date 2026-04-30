@@ -145,8 +145,8 @@ export const AppModeProvider = ({
     if (!tagsEnabled) return {};
     const notesList = Array.isArray(notes) ? notes : [];
     const checklistsList = Array.isArray(checklists) ? checklists : [];
-    return buildTagsIndex(notesList, checklistsList);
-  }, [notes, checklists, tagsEnabled]);
+    return buildTagsIndex(notesList, checklistsList, user?.tagColors);
+  }, [notes, checklists, tagsEnabled, user?.tagColors]);
 
   const contextValue = useMemo(
     () => ({

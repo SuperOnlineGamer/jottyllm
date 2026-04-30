@@ -19,11 +19,19 @@ export interface Note {
   tags?: string[];
 }
 
+export interface NoteSaveOptions {
+  exitEditMode?: boolean;
+}
+
 export interface NoteEditorViewModel {
   title: string;
   setTitle: (title: string) => void;
   category: string;
   setCategory: (category: string) => void;
+  tags: string[];
+  setTags: (tags: string[]) => void;
+  handleAddTag: (tag: string) => void;
+  handleRemoveTag: (tag: string) => void;
   editorContent: string;
   isEditing: boolean;
   setIsEditing: (isEditing: boolean) => void;
@@ -33,7 +41,11 @@ export interface NoteEditorViewModel {
   };
   handleEdit: () => void;
   handleCancel: () => void;
-  handleSave: (autosaveNotes?: boolean, passphrase?: string) => void;
+  handleSave: (
+    autosaveNotes?: boolean,
+    passphrase?: string,
+    options?: NoteSaveOptions,
+  ) => void;
   handleDelete: () => void;
   handleEditorContentChange: (
     content: string,

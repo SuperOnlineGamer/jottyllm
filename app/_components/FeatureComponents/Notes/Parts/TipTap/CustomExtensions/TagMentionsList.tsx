@@ -10,6 +10,8 @@ import {
 import { cn } from "@/app/_utils/global-utils";
 import { Tag01Icon, Search01Icon } from "hugeicons-react";
 import { useTranslations } from "next-intl";
+import { getTagColor, normalizeTag } from "@/app/_utils/tag-utils";
+import { useAppMode } from "@/app/_providers/AppModeProvider";
 
 interface TagMentionItem {
   tag: string;
@@ -29,6 +31,7 @@ export const TagMentionsList = forwardRef<
   const [selectedIndex, setSelectedIndex] = useState(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const t = useTranslations();
+  const { tagsIndex } = useAppMode();
 
   const filteredItems = items.filter((item) =>
     item.tag.toLowerCase().includes(searchQuery.toLowerCase())
@@ -104,21 +107,28 @@ export const TagMentionsList = forwardRef<
       <div className="max-h-60 overflow-y-auto">
         {filteredItems.length ? (
           <div className="space-y-1">
-            {filteredItems.map((item, index) => (
-              <button
-                key={item.tag}
-                className={cn(
-                  "flex items-center gap-3 w-full px-3 py-2 text-left rounded-jotty text-md lg:text-sm transition-colors",
-                  index === selectedIndex
-                    ? "bg-accent text-accent-foreground"
-                    : "hover:bg-accent/50"
-                )}
-                onClick={() => selectItem(index)}
-              >
-                <Tag01Icon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                <span className="font-medium truncate">#{item.display}</span>
-              </button>
-            ))}
+            {filteredItems.map((item, index) => {
+              const tagName = normalizeTag(item.tag);
+              const tagColor = tagsIndex[tagName]?.color ?? getTagColor(tagName);
+              return (
+                <button
+                  key={item.tag}
+                  className={cn(
+                    "flex items-center gap-3 w-full px-3 py-2 text-left rounded-jotty text-md lg:text-sm transition-colors",
+                    index === selectedIndex
+                      ? "bg-accent text-accent-foreground"
+                      : "hover:bg-accent/50"
+                  )}
+                  onClick={() => selectItem(index)}
+                >
+                  <Tag01Icon
+                    className="h-4 w-4 flex-shrink-0"
+                    style={{ color: tagColor.foreground }}
+                  />
+                  <span className="font-medium truncate">#{item.display}</span>
+                </button>
+              );
+            })}
           </div>
         ) : (
           <div className="px-3 py-6 text-center text-md lg:text-sm text-muted-foreground">

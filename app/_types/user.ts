@@ -39,6 +39,7 @@ export type QuickCreateNotes = "enable" | "disable";
 export type HideConnectionIndicator = "enable" | "disable";
 export type CodeBlockStyle = "default" | "themed";
 export type ChecklistItemClickAction = "toggle" | "edit";
+export type TagColorOverrides = Record<string, string>;
 
 export interface User {
   username: string;
@@ -74,6 +75,7 @@ export interface User {
   quickCreateNotesCategory?: string;
   hideConnectionIndicator?: HideConnectionIndicator;
   codeBlockStyle?: CodeBlockStyle;
+  tagColors?: TagColorOverrides;
   mfaEnabled?: boolean;
   mfaSecret?: string;
   mfaRecoveryCode?: string;

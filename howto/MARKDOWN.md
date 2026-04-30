@@ -8,6 +8,12 @@ This guide covers all supported syntax for creating rich content in your notes. 
 
 These are the foundational elements for formatting your text.
 
+### Tags
+
+When tags are enabled, edit a note and use the tag field under the note title to add or remove tags. Tags are saved in the note frontmatter and appear as colored chips on note cards, list rows, grid items, and the note header.
+
+You can also type tags directly in note content with hashtag syntax such as `#work`, `#project/planning`, or `#personal/health`. Content hashtags are merged with the note metadata tags when the note is saved.
+
 ### Text Formatting
 
 <table style="min-width: 75px;">

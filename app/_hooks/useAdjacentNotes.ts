@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { Note } from "@/app/_types";
 import { useAppMode } from "@/app/_providers/AppModeProvider";
+import { tagMatchesFilter } from "@/app/_utils/tag-utils";
 
 interface AdjacentNotesResult {
   prev: Partial<Note> | null;
@@ -23,7 +24,7 @@ export const useAdjacentNotes = (currentId: string): AdjacentNotesResult => {
       );
     } else if (selectedFilter?.type === "tag" && selectedFilter.value) {
       filteredNotes = notes.filter((n) =>
-        n.tags?.includes(selectedFilter.value),
+        n.tags?.some((tag) => tagMatchesFilter(tag, selectedFilter.value)),
       );
     }
 
