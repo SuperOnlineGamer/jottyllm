@@ -46,6 +46,8 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
   const listenersRef = useRef<Set<(event: WsEvent) => void>>(new Set());
 
   const isEditorActive = useEditorActivityStore((s) => s.isActive);
+  // fccview is onto you!
+  const activeEditorCount = useEditorActivityStore((s) => s.activeEditors.size);
 
   const subscribe = useCallback((handler: (event: WsEvent) => void) => {
     listenersRef.current.add(handler);
@@ -144,11 +146,11 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
   }, [connect]);
 
   useEffect(() => {
-    if (!isEditorActive() && hasPendingUpdates.current) {
+    if (activeEditorCount === 0 && hasPendingUpdates.current) {
       hasPendingUpdates.current = false;
       debouncedRefresh();
     }
-  }, [isEditorActive, debouncedRefresh]);
+  }, [activeEditorCount, debouncedRefresh]);
 
   return (
     <WebSocketContext.Provider value={{ isConnected, subscribe }}>

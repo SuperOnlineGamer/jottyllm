@@ -2,7 +2,7 @@
 
 import path from "path";
 import fs from "fs/promises";
-import { Checklist, User, GetChecklistsOptions } from "@/app/_types";
+import { Checklist, ContentFilter, User, GetChecklistsOptions } from "@/app/_types";
 import { CHECKLISTS_FOLDER } from "@/app/_consts/checklists";
 import { USERS_FILE } from "@/app/_consts/files";
 import { Modes } from "@/app/_types/enums";
@@ -438,7 +438,7 @@ export const getAllLists = async (
 };
 
 export const getChecklistsForDisplay = async (
-  filter?: { type: "category" | "tag"; value: string } | null,
+  filter?: ContentFilter | null,
   limit: number = 20,
   offset: number = 0,
 ) => {

@@ -18,6 +18,7 @@ export type {
   NoteComment,
   NoteEditorViewModel,
   NoteLinkedTask,
+  NoteLinkedTaskPreview,
   NoteReminder,
   NoteSaveOptions,
   NoteSaveState,

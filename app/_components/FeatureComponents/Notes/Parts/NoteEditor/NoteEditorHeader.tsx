@@ -29,7 +29,13 @@ import {
   GitCompareIcon,
   Copy02Icon,
 } from "hugeicons-react";
-import { Note, Category, NoteComment, NoteReminder } from "@/app/_types";
+import {
+  Note,
+  Category,
+  NoteComment,
+  NoteLinkedTaskPreview,
+  NoteReminder,
+} from "@/app/_types";
 import { NoteEditorViewModel } from "@/app/_types";
 import { useEffect, useState } from "react";
 import { DropdownMenu } from "@/app/_components/GlobalComponents/Dropdowns/DropdownMenu";
@@ -64,6 +70,7 @@ import { NoteTagEditor } from "@/app/_components/FeatureComponents/Tags/TagChip"
 import {
   addNoteComment,
   deleteNoteReminder,
+  getNoteLinkedTaskPreviews,
   resolveNoteComment,
   upsertNoteReminder,
 } from "@/app/_server/actions/note-workflows";
@@ -81,7 +88,7 @@ interface NoteEditorHeaderProps {
   onOpenViewModal?: React.MutableRefObject<(() => void) | null>;
 }
 
-type WorkflowPanel = "reminders" | "comments";
+type WorkflowPanel = "reminders" | "comments" | "linkedTasks";
 
 const localDateTimeToIso = (value: string): string => {
   const date = new Date(value);
@@ -139,10 +146,14 @@ export const NoteEditorHeader = ({
     useState<WorkflowPanel | null>(null);
   const [reminders, setReminders] = useState<NoteReminder[]>(note.reminders || []);
   const [comments, setComments] = useState<NoteComment[]>(note.comments || []);
+  const [linkedTaskPreviews, setLinkedTaskPreviews] = useState<
+    NoteLinkedTaskPreview[]
+  >((note.linkedTasks || []).map((linkedTask) => ({ ...linkedTask, exists: false })));
   const [reminderTitle, setReminderTitle] = useState("");
   const [reminderDueAt, setReminderDueAt] = useState("");
   const [commentBody, setCommentBody] = useState("");
   const [isSavingWorkflow, setIsSavingWorkflow] = useState(false);
+  const [isLoadingLinkedTasks, setIsLoadingLinkedTasks] = useState(false);
   const { user, appSettings } = useAppMode();
   const router = useRouter();
   const { permissions } = usePermissions();
@@ -155,8 +166,47 @@ export const NoteEditorHeader = ({
   useEffect(() => {
     setReminders(note.reminders || []);
     setComments(note.comments || []);
+    setLinkedTaskPreviews(
+      (note.linkedTasks || []).map((linkedTask) => ({
+        ...linkedTask,
+        exists: false,
+      })),
+    );
     setActiveWorkflowPanel(null);
   }, [note?.id, note.reminders, note.comments]);
+
+  useEffect(() => {
+    const linkedTasks = note.linkedTasks || [];
+    if (linkedTasks.length === 0) {
+      setLinkedTaskPreviews([]);
+      return;
+    }
+
+    let isActive = true;
+    const loadLinkedTaskPreviews = async () => {
+      setIsLoadingLinkedTasks(true);
+      try {
+        const formData = new FormData();
+        formData.append("noteId", note.uuid || note.id);
+        formData.append("noteCategory", note.category || "Uncategorized");
+        const result = await getNoteLinkedTaskPreviews(formData);
+
+        if (isActive && result.success && result.data) {
+          setLinkedTaskPreviews(result.data);
+        }
+      } catch (error) {
+        console.error("Failed to load linked task previews:", error);
+      } finally {
+        if (isActive) setIsLoadingLinkedTasks(false);
+      }
+    };
+
+    loadLinkedTaskPreviews();
+
+    return () => {
+      isActive = false;
+    };
+  }, [note.id, note.uuid, note.category, note.linkedTasks]);
 
   useEffect(() => {
     if (onOpenDecryptModal) {
@@ -519,8 +569,15 @@ export const NoteEditorHeader = ({
     (reminder) => reminder.status === "pending",
   );
   const openComments = comments.filter((comment) => !comment.resolvedAt);
+  const linkedTaskCount = note.linkedTasks?.length || linkedTaskPreviews.length;
+  const activeLinkedTaskCount = linkedTaskPreviews.filter(
+    (task) => task.exists && !task.completed && !task.itemArchived,
+  ).length;
   const shouldShowWorkflowSummary =
-    permissions?.canEdit || pendingReminders.length > 0 || openComments.length > 0;
+    permissions?.canEdit ||
+    pendingReminders.length > 0 ||
+    openComments.length > 0 ||
+    linkedTaskCount > 0;
 
   return (
     <>
@@ -975,6 +1032,21 @@ export const NoteEditorHeader = ({
                   </span>
                 )}
               </Button>
+              {linkedTaskCount > 0 && (
+                <Button
+                  type="button"
+                  variant={activeWorkflowPanel === "linkedTasks" ? "secondary" : "ghost"}
+                  size="sm"
+                  onClick={() => toggleWorkflowPanel("linkedTasks")}
+                  className="gap-1.5"
+                >
+                  <Tick02Icon className="h-4 w-4" />
+                  <span>Tasks</span>
+                  <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-xs text-primary">
+                    {activeLinkedTaskCount || linkedTaskCount}
+                  </span>
+                </Button>
+              )}
             </div>
 
             {activeWorkflowPanel && (
@@ -1134,6 +1206,94 @@ export const NoteEditorHeader = ({
                     ) : (
                       <p className="text-md lg:text-sm text-muted-foreground">
                         No comments yet.
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div
+                  className={cn(
+                    "space-y-3",
+                    activeWorkflowPanel !== "linkedTasks" && "hidden",
+                  )}
+                >
+                  <div>
+                    <h3 className="text-md lg:text-sm font-semibold text-foreground">
+                      Linked tasks
+                    </h3>
+                    <p className="text-sm lg:text-xs text-muted-foreground">
+                      Track checklist items created from this note.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    {isLoadingLinkedTasks ? (
+                      <p className="text-md lg:text-sm text-muted-foreground">
+                        Loading linked tasks...
+                      </p>
+                    ) : linkedTaskPreviews.length > 0 ? (
+                      linkedTaskPreviews.map((task) => {
+                        const statusLabel = !task.exists
+                          ? "Missing"
+                          : task.completed
+                            ? "Completed"
+                            : task.statusLabel || "Open";
+                        const statusClassName = !task.exists
+                          ? "bg-destructive/10 text-destructive"
+                          : task.completed
+                            ? "bg-green-500/10 text-green-600 dark:text-green-400"
+                            : "bg-primary/10 text-primary";
+
+                        return (
+                          <button
+                            key={task.id}
+                            type="button"
+                            disabled={!task.exists}
+                            onClick={() => {
+                              if (!task.exists) return;
+                              const checklistPath = buildCategoryPath(
+                                task.checklistCategory || "Uncategorized",
+                                task.checklistId,
+                              );
+                              router.push(`/checklist/${checklistPath}`);
+                            }}
+                            className={cn(
+                              "flex w-full items-start justify-between gap-3 rounded-jotty border border-border bg-background px-3 py-2 text-left transition-colors",
+                              task.exists && "hover:bg-accent",
+                              !task.exists && "cursor-not-allowed opacity-70",
+                            )}
+                          >
+                            <div className="min-w-0 space-y-1">
+                              <p className="truncate text-md lg:text-sm font-medium">
+                                {task.title}
+                              </p>
+                              <p className="text-sm lg:text-xs text-muted-foreground">
+                                {task.checklistTitle || task.checklistId}
+                                {task.targetDate
+                                  ? ` · Due ${formatWorkflowDateTime(task.targetDate)}`
+                                  : ""}
+                              </p>
+                              {(task.priority || task.assignee) && (
+                                <p className="text-sm lg:text-xs text-muted-foreground">
+                                  {task.priority ? `Priority: ${task.priority}` : ""}
+                                  {task.priority && task.assignee ? " · " : ""}
+                                  {task.assignee ? `Assigned to ${task.assignee}` : ""}
+                                </p>
+                              )}
+                            </div>
+                            <span
+                              className={cn(
+                                "shrink-0 rounded-full px-2 py-0.5 text-xs font-medium",
+                                statusClassName,
+                              )}
+                            >
+                              {statusLabel}
+                            </span>
+                          </button>
+                        );
+                      })
+                    ) : (
+                      <p className="text-md lg:text-sm text-muted-foreground">
+                        No linked tasks yet.
                       </p>
                     )}
                   </div>

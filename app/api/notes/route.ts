@@ -5,6 +5,7 @@ import {
   matchesNoteSearchQuery,
   parseSearchQuery,
 } from "@/app/_utils/search-query-utils";
+import { generateNoteRemindersICS } from "@/app/_utils/kanban/calendar-utils";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +41,7 @@ export async function GET(request: NextRequest) {
       const updated = searchParams.get("updated");
       const reminder = searchParams.get("reminder");
       const due = searchParams.get("due");
+      const format = searchParams.get("format");
       const structuredQuery = [
         search,
         tag ? `tag:"${tag.replace(/"/g, "")}"` : "",
@@ -72,6 +74,17 @@ export async function GET(request: NextRequest) {
         filteredNotes = filteredNotes.filter((note) =>
           matchesNoteSearchQuery(note, parsedQuery, user.tagColors),
         );
+      }
+
+      const accept = request.headers.get("accept") || "";
+      if (format === "ics" || accept.includes("text/calendar")) {
+        const ics = generateNoteRemindersICS(filteredNotes, "Jotty Note Reminders");
+        return new NextResponse(ics, {
+          headers: {
+            "Content-Type": "text/calendar; charset=utf-8",
+            "Content-Disposition": 'attachment; filename="jotty-note-reminders.ics"',
+          },
+        });
       }
 
       const transformedNotes = filteredNotes.map((note) =>

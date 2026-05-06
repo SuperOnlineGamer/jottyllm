@@ -118,6 +118,9 @@ export const readNotesRecursively = async (
         const tags = Array.isArray(metadata?.tags)
           ? (metadata.tags as string[])
           : [];
+        const reminders = Array.isArray(metadata?.reminders)
+          ? (metadata.reminders as Note["reminders"])
+          : [];
 
         return {
           id,
@@ -130,6 +133,7 @@ export const readNotesRecursively = async (
           isShared: false,
           encrypted: metadata?.encrypted === true,
           tags,
+          reminders,
         };
       } else if (excerptLength) {
         const metadata =
@@ -137,6 +141,9 @@ export const readNotesRecursively = async (
           (await grepExtractFrontmatter(filePath));
         const tags = Array.isArray(metadata?.tags)
           ? (metadata.tags as string[])
+          : [];
+        const reminders = Array.isArray(metadata?.reminders)
+          ? (metadata.reminders as Note["reminders"])
           : [];
         const excerpt = await grepExtractExcerpt(filePath, excerptLength);
 
@@ -152,6 +159,7 @@ export const readNotesRecursively = async (
           isShared: false,
           encrypted: metadata?.encrypted === true,
           tags,
+          reminders,
         };
       } else {
         const content = await serverReadFile(filePath);

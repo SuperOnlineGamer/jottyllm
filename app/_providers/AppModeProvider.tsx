@@ -13,6 +13,7 @@ import {
   AppMode,
   AppSettings,
   Checklist,
+  ContentFilter,
   Note,
   User,
   AppModeContextType,
@@ -94,10 +95,9 @@ export const AppModeProvider = ({
   const [mode, setMode] = useState<AppMode>(modeToSet);
   const [selectedNote, setSelectedNote] = useState<string | null>(null);
 
-  const [selectedFilter, setSelectedFilter] = useState<{
-    type: "category" | "tag";
-    value: string;
-  } | null>(tagParam ? { type: "tag", value: tagParam } : null);
+  const [selectedFilter, setSelectedFilter] = useState<ContentFilter | null>(
+    tagParam ? { type: "tag", value: tagParam } : null,
+  );
   const [isInitialized, setIsInitialized] = useState(false);
   const [user, setUser] = useState<SanitisedUser | null>(initialUser || null);
 

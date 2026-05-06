@@ -2,7 +2,7 @@
 
 import path from "path";
 import fs from "fs/promises";
-import { Note, User, GetNotesOptions } from "@/app/_types";
+import { ContentFilter, Note, User, GetNotesOptions } from "@/app/_types";
 import { NOTES_DIR } from "@/app/_consts/files";
 import { Modes } from "@/app/_types/enums";
 import { getCurrentUser, getUserByNote } from "@/app/_server/actions/users";
@@ -19,6 +19,36 @@ import { readNotesRecursively } from "./readers";
 import { isDebugFlag } from "@/app/_utils/env-utils";
 import { getOrCompute, metaCacheKey } from "@/app/_server/lib/metadata-cache";
 import { tagMatchesFilter } from "@/app/_utils/tag-utils";
+
+const matchesReminderFilter = (
+  note: Partial<Note>,
+  filterValue: string,
+  now: number = Date.now(),
+) => {
+  const reminders = Array.isArray(note.reminders) ? note.reminders : [];
+
+  if (filterValue === "any") return reminders.length > 0;
+
+  if (filterValue === "overdue") {
+    return reminders.some((reminder) => {
+      const dueTime = Date.parse(reminder.dueAt);
+      return reminder.status === "pending" && Number.isFinite(dueTime) && dueTime < now;
+    });
+  }
+
+  if (filterValue === "upcoming") {
+    return reminders.some((reminder) => {
+      const dueTime = Date.parse(reminder.dueAt);
+      return reminder.status === "pending" && Number.isFinite(dueTime) && dueTime >= now;
+    });
+  }
+
+  if (["pending", "done", "dismissed"].includes(filterValue)) {
+    return reminders.some((reminder) => reminder.status === filterValue);
+  }
+
+  return false;
+};
 
 export const getAllNotes = async (allowArchived?: boolean) => {
   try {
@@ -348,6 +378,11 @@ export const getUserNotes = async (options: GetNotesOptions = {}) => {
           const noteTags = note.tags || [];
           return noteTags.some((tag: string) => tagMatchesFilter(tag, filter.value));
         });
+      } else if (filter.type === "reminder") {
+        const now = Date.now();
+        filteredNotes = notes.filter((note: Partial<Note>) =>
+          matchesReminderFilter(note, filter.value, now),
+        );
       }
     }
 
@@ -414,7 +449,7 @@ export const getUserNotes = async (options: GetNotesOptions = {}) => {
 };
 
 export const getNotesForDisplay = async (
-  filter?: { type: "category" | "tag"; value: string } | null,
+  filter?: ContentFilter | null,
   limit: number = 20,
   offset: number = 0,
 ) => {

@@ -158,10 +158,10 @@ Outcome: Users can attach reminders to notes and optionally create reminders fro
 - [x] Add note-level reminder metadata with due date, optional repeat rule, status, and notification preference.
 - [x] Add reminder controls in the note editor and note metadata panel.
 - [x] Add reminder status and due-date filters to API/global search.
-- [ ] Add reminders to notes home filters.
+- [x] Add reminders to notes home filters.
 - [ ] Add optional tag-based reminder rules, such as all notes tagged `invoice` reminding after a configured delay.
 - [ ] Add optional keyword/date detection as a user-confirmed suggestion, not an automatic silent action.
-- [ ] Add in-app notifications first; browser push or email can come later.
+- [x] Add in-app notifications first; browser push or email can come later.
 - [ ] Add tests for reminder creation, filtering, notification eligibility, and recurring reminders if enabled.
 
 ### 6. Export And External Integrations
@@ -173,7 +173,7 @@ Outcome: Users can get notes out of Jotty in practical formats and optionally co
 - [ ] Add PDF export only after markdown/html rendering is stable enough for predictable output.
 - [ ] Add CSV export for metadata lists, not rich note bodies.
 - [ ] Add selective export by category, tag, date range, or search result.
-- [ ] Add ICS export/feed for reminders before full calendar two-way sync.
+- [x] Add ICS export/feed for reminders before full calendar two-way sync.
 - [ ] Evaluate CalDAV or provider-specific calendar sync only after ICS proves useful.
 - [ ] Evaluate external task integrations after local task conversion exists.
 - [ ] Add tests around export permissions, shared notes, encrypted notes, and attachment paths.
@@ -199,8 +199,8 @@ Outcome: Users can turn note content into actionable tasks with due dates and re
 - [x] Add a selected-text action to convert note content into a checklist item or Kanban task.
 - [x] Preserve a backlink from created task to source note.
 - [ ] Add due date and reminder extraction as a confirmation step.
-- [ ] Add inline note indicators for linked tasks.
-- [ ] Add task status previews in note view.
+- [x] Add inline note indicators for linked tasks.
+- [x] Add task status previews in note view.
 - [ ] Add API support after the local UI flow is stable.
 - [ ] Evaluate Todoist, Microsoft To Do, CalDAV tasks, or other integrations later.
 - [ ] Add tests for conversion, backlinks, permission checks, and deleted-source handling.

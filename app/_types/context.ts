@@ -8,8 +8,10 @@ import { TagsIndex } from "./tags";
 
 export type AppMode = "checklists" | "notes" | "tags";
 
+export type ContentFilterType = "category" | "tag" | "reminder";
+
 export interface ContentFilter {
-  type: 'category' | 'tag';
+  type: ContentFilterType;
   value: string;
 }
 
@@ -18,8 +20,8 @@ export interface AppModeContextType {
   setMode: (mode: AppMode) => void;
   selectedNote: string | null;
   setSelectedNote: (id: string | null) => void;
-  selectedFilter: { type: 'category' | 'tag'; value: string } | null;
-  setSelectedFilter: (filter: { type: 'category' | 'tag'; value: string } | null) => void;
+  selectedFilter: ContentFilter | null;
+  setSelectedFilter: (filter: ContentFilter | null) => void;
   isInitialized: boolean;
   isDemoMode: boolean;
   isRwMarkable: boolean;

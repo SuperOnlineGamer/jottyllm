@@ -15,6 +15,8 @@ import { rebuildLinkIndex } from "@/app/_server/actions/link";
 import { logAudit } from "@/app/_server/actions/log";
 import { broadcast } from "@/app/_server/ws/broadcast";
 import { isPathSafe } from "@/app/_utils/path-utils";
+// fccview is onto you!
+import { invalidateMetadataCacheForDir } from "@/app/_server/lib/metadata-cache";
 
 const _sanitisedFileOrder = async (
   dirPath: string,
@@ -222,6 +224,26 @@ export const moveNode = async (formData: FormData) => {
       const newPath = path.join(newParentDir, fileName);
 
       await fs.rename(oldPath, newPath);
+      // fccview is onto you!
+      invalidateMetadataCacheForDir(baseDir);
+
+      // fccview is onto you!
+      // Update the note's frontmatter category field to match its new directory
+      // so the file stays internally consistent after a drag-move.
+      if (activeType === "item" && mode === Modes.NOTES) {
+        try {
+          const { updateYamlMetadata } = await import(
+            "@/app/_utils/yaml-metadata-utils"
+          );
+          const fileContent = await fs.readFile(newPath, "utf-8");
+          const updated = updateYamlMetadata(fileContent, {
+            category: destParentPath || "Uncategorized",
+          });
+          await fs.writeFile(newPath, updated, "utf-8");
+        } catch (err) {
+          console.warn("Failed to update note frontmatter after drag-move:", err);
+        }
+      }
 
       const oldOrder = await _sanitisedFileOrder(oldParentDir);
       oldOrder[listKey] = oldOrder[listKey].filter((n) => n !== activeName);

@@ -1,4 +1,4 @@
-import { Item, KanbanStatus } from "@/app/_types";
+import { Item, Note, NoteReminder } from "@/app/_types";
 
 export interface CalendarEvent {
   id: string;
@@ -8,6 +8,17 @@ export interface CalendarEvent {
   priority?: string;
   completed: boolean;
   itemId: string;
+}
+
+export interface NoteReminderCalendarEvent {
+  id: string;
+  title: string;
+  date: string;
+  status: NoteReminder["status"];
+  completed: boolean;
+  noteId: string;
+  noteTitle: string;
+  category: string;
 }
 
 export const parseItemsForCalendar = (items: Item[]): CalendarEvent[] =>
@@ -22,6 +33,28 @@ export const parseItemsForCalendar = (items: Item[]): CalendarEvent[] =>
       completed: item.completed,
       itemId: item.id,
     }));
+
+export const parseNotesForReminderCalendar = (
+  notes: Partial<Note>[],
+): NoteReminderCalendarEvent[] =>
+  notes.flatMap((note) => {
+    const reminders = Array.isArray(note.reminders) ? note.reminders : [];
+    const noteTitle = note.title || note.id || "Untitled Note";
+    const noteId = note.uuid || note.id || noteTitle;
+
+    return reminders
+      .filter((reminder) => reminder.dueAt)
+      .map((reminder) => ({
+        id: reminder.id,
+        title: reminder.title || noteTitle,
+        date: reminder.dueAt,
+        status: reminder.status,
+        completed: reminder.status === "done",
+        noteId,
+        noteTitle,
+        category: note.category || "Uncategorized",
+      }));
+  });
 
 const _escapeICS = (text: string): string =>
   text.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\n/g, "\\n");
@@ -66,6 +99,63 @@ export const generateICS = (items: Item[], boardTitle: string): string => {
     "VERSION:2.0",
     "PRODID:-//Jotty//Kanban//EN",
     `X-WR-CALNAME:${_escapeICS(boardTitle)}`,
+    "CALSCALE:GREGORIAN",
+    "METHOD:PUBLISH",
+    ...events,
+    "END:VCALENDAR",
+  ].join("\r\n");
+};
+
+export const generateNoteReminderVEVENT = (
+  note: Partial<Note>,
+  reminder: NoteReminder,
+): string => {
+  if (!reminder.dueAt) return "";
+
+  const noteTitle = note.title || note.id || "Untitled Note";
+  const noteId = note.uuid || note.id || noteTitle;
+  const category = note.category || "Uncategorized";
+  const dtstart = _formatICSDate(reminder.dueAt);
+  const dtend = _formatICSDate(
+    new Date(new Date(reminder.dueAt).getTime() + 1800000).toISOString(),
+  );
+  const now = _formatICSDate(new Date().toISOString());
+  let status = "NEEDS-ACTION";
+  if (reminder.status === "dismissed") status = "CANCELLED";
+  if (reminder.status === "done") status = "COMPLETED";
+
+  const lines = [
+    "BEGIN:VEVENT",
+    `UID:${noteId}-${reminder.id}@jotty-note-reminders`,
+    `DTSTAMP:${now}`,
+    `DTSTART:${dtstart}`,
+    `DTEND:${dtend}`,
+    `SUMMARY:${_escapeICS(reminder.title || noteTitle)}`,
+    `DESCRIPTION:${_escapeICS(`Note: ${noteTitle}\nCategory: ${category}`)}`,
+    `STATUS:${status}`,
+    "END:VEVENT",
+  ];
+
+  return lines.join("\r\n");
+};
+
+export const generateNoteRemindersICS = (
+  notes: Partial<Note>[],
+  calendarTitle = "Jotty Note Reminders",
+): string => {
+  const events = notes
+    .flatMap((note) =>
+      (Array.isArray(note.reminders) ? note.reminders : []).map((reminder) =>
+        generateNoteReminderVEVENT(note, reminder),
+      ),
+    )
+    .filter(Boolean);
+
+  return [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//Jotty//Note Reminders//EN",
+    `X-WR-CALNAME:${_escapeICS(calendarTitle)}`,
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
     ...events,

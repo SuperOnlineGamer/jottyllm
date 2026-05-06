@@ -1,6 +1,7 @@
 "use server";
 
 import { ItemTypes } from "@/app/_types/enums";
+import { ItemType } from "@/app/_types/core";
 import { readShareFile } from "./io";
 import { SharedItemEntry } from "./types";
 
@@ -17,18 +18,19 @@ export const getAllSharedItemsForUser = async (
 };
 
 export const getUsersWithAccess = async (
-  checklistId: string,
-  checklistUuid?: string
+  itemId: string,
+  itemUuid?: string,
+  itemType: ItemType = ItemTypes.CHECKLIST,
 ): Promise<string[]> => {
-  const sharingData = await readShareFile(ItemTypes.CHECKLIST);
+  const sharingData = await readShareFile(itemType);
   const users: string[] = [];
 
   for (const [username, entries] of Object.entries(sharingData)) {
     if (username === "public") continue;
     for (const entry of entries) {
       if (
-        (checklistUuid && entry.uuid === checklistUuid) ||
-        (entry.id === checklistId)
+        (itemUuid && entry.uuid === itemUuid) ||
+        (entry.id === itemId)
       ) {
         users.push(username);
         break;

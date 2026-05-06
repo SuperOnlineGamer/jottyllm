@@ -2,6 +2,8 @@
 
 import {
   Add01Icon,
+  Calendar03Icon,
+  Clock01Icon,
   File02Icon,
   ArrowRight04Icon,
   Cancel01Icon,
@@ -31,6 +33,7 @@ import {
   useCallback,
 } from "react";
 import { getNotesForDisplay } from "@/app/_server/actions/note";
+import { exportNoteRemindersAsICS } from "@/app/_server/actions/note-workflows";
 import { useInfiniteScroll } from "@/app/_hooks/useInfiniteScroll";
 import { FILTER_PAGE_SIZE } from "@/app/_consts/files";
 import { JottyIcon } from "@/app/_components/GlobalComponents/Layout/CustomIcons/JottyIcon";
@@ -42,6 +45,14 @@ interface NotesHomeProps {
   onCreateModal: () => void;
   onSelectNote: (note: Note) => void;
 }
+
+const REMINDER_FILTER_OPTIONS = [
+  { value: "any", label: "Reminders" },
+  { value: "pending", label: "Pending" },
+  { value: "overdue", label: "Overdue" },
+  { value: "upcoming", label: "Upcoming" },
+  { value: "done", label: "Done" },
+];
 
 export const NotesHome = ({
   notes: initialNotes,
@@ -61,6 +72,9 @@ export const NotesHome = ({
   const { viewMode } = useSettings();
   const [isPending, startTransition] = useTransition();
   const [firstPage, setFirstPage] = useState<Note[]>([]);
+  const [isExportingReminders, setIsExportingReminders] = useState(false);
+  const activeReminderFilter =
+    selectedFilter?.type === "reminder" ? selectedFilter.value : null;
 
   useEffect(() => {
     if (!selectedFilter) {
@@ -129,8 +143,49 @@ export const NotesHome = ({
     if (selectedFilter.type === "category") {
       return selectedFilter.value.split("/").pop() || selectedFilter.value;
     }
+    if (selectedFilter.type === "reminder") {
+      return (
+        REMINDER_FILTER_OPTIONS.find(
+          (option) => option.value === selectedFilter.value,
+        )?.label || "Reminders"
+      );
+    }
     return tagsIndex[selectedFilter.value]?.displayName || selectedFilter.value;
   }, [selectedFilter, tagsIndex]);
+
+  const handleReminderFilterChange = (value: string) => {
+    setSelectedFilter(
+      activeReminderFilter === value ? null : { type: "reminder", value },
+    );
+  };
+
+  const handleExportReminders = async () => {
+    if (isExportingReminders) return;
+
+    setIsExportingReminders(true);
+    try {
+      const result = await exportNoteRemindersAsICS();
+      if (!result.success || !result.data) {
+        throw new Error(result.error || "Failed to export reminders.");
+      }
+
+      const blob = new Blob([result.data], {
+        type: "text/calendar;charset=utf-8",
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "jotty-note-reminders.ics";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Failed to export note reminders:", error);
+    } finally {
+      setIsExportingReminders(false);
+    }
+  };
 
   const getNoteSharer = (note: Note) => {
     const encodedCategory = encodeCategoryPath(
@@ -143,6 +198,7 @@ export const NotesHome = ({
   };
 
   const hasAnyNotes = allNotesMetadata && allNotesMetadata.length > 0;
+  const hasVisibleNotes = pinned.length > 0 || filteredRecent.length > 0;
 
   if (!hasAnyNotes) {
     return (
@@ -199,9 +255,58 @@ export const NotesHome = ({
           </div>
         </div>
 
+        <div className="flex flex-wrap items-center gap-2 mb-6">
+          {REMINDER_FILTER_OPTIONS.map((option) => {
+            const isActive = activeReminderFilter === option.value;
+
+            return (
+              <Button
+                key={option.value}
+                variant={isActive ? "default" : "outline"}
+                size="sm"
+                aria-pressed={isActive}
+                onClick={() => handleReminderFilterChange(option.value)}
+                className="h-9"
+              >
+                {option.value === "any" && (
+                  <Clock01Icon className="h-4 w-4 mr-2" />
+                )}
+                {option.label}
+              </Button>
+            );
+          })}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportReminders}
+            disabled={isExportingReminders}
+            className="h-9"
+          >
+            <Calendar03Icon className="h-4 w-4 mr-2" />
+            Export .ics
+          </Button>
+        </div>
+
         {selectedFilter && firstPage.length === 0 && isPending && (
           <div className="flex items-center justify-center min-h-[240px]">
             <JottyIcon className="h-16 w-16 text-primary" animated={true} />
+          </div>
+        )}
+
+        {selectedFilter && !isPending && !hasVisibleNotes && (
+          <div className="flex min-h-[260px] flex-col items-center justify-center text-center">
+            <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
+              <Clock01Icon className="h-8 w-8 text-muted-foreground" />
+            </div>
+            <h2 className="text-xl font-semibold text-foreground mb-2">
+              No matching notes
+            </h2>
+            <p className="text-muted-foreground mb-5 max-w-sm">
+              Try another filter or clear the current one.
+            </p>
+            <Button variant="outline" onClick={() => setSelectedFilter(null)}>
+              Clear filter
+            </Button>
           </div>
         )}
 

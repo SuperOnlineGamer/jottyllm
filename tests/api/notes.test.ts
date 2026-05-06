@@ -176,6 +176,42 @@ describe("Notes API", () => {
       expect(data.notes[0].title).toBe("Call vendor")
     })
 
+    it("should export note reminders as an ICS feed", async () => {
+      const mockNotes = [
+        {
+          id: "1",
+          uuid: "uuid-1",
+          title: "Call vendor",
+          content: "Follow up on invoice",
+          category: "Work",
+          owner: "testuser",
+          reminders: [
+            {
+              id: "reminder-1",
+              dueAt: "2026-04-30T18:04:00.000Z",
+              title: "Invoice follow-up",
+              status: "pending",
+              createdAt: "2026-04-30T12:00:00.000Z",
+            },
+          ],
+        },
+      ]
+      mockGetUserNotes.mockResolvedValue({ success: true, data: mockNotes })
+
+      const request = createMockRequest(
+        "GET",
+        "http://localhost:3000/api/notes?format=ics",
+      )
+      const response = await GET(request)
+      const text = await response.text()
+
+      expect(response.status).toBe(200)
+      expect(response.headers.get("content-type")).toContain("text/calendar")
+      expect(text).toContain("BEGIN:VCALENDAR")
+      expect(text).toContain("SUMMARY:Invoice follow-up")
+      expect(text).toContain("UID:uuid-1-reminder-1@jotty-note-reminders")
+    })
+
     it("should return 401 for unauthorized requests", async () => {
       mockAuthenticateApiKey.mockResolvedValue(null)
 

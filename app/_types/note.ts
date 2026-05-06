@@ -1,5 +1,6 @@
 import { ItemTypes } from "./enums";
 import { EncryptionMethod } from "./encryption";
+import type { ChecklistType, KanbanPriority } from "./checklist";
 
 export interface NoteReminder {
   id: string;
@@ -11,6 +12,7 @@ export interface NoteReminder {
   createdAt: string;
   createdBy?: string;
   completedAt?: string;
+  notifiedAt?: string;
 }
 
 export interface NoteLinkedTask {
@@ -23,6 +25,21 @@ export interface NoteLinkedTask {
   sourceText?: string;
   createdAt: string;
   createdBy?: string;
+}
+
+export interface NoteLinkedTaskPreview extends NoteLinkedTask {
+  exists: boolean;
+  checklistTitle?: string;
+  checklistType?: ChecklistType;
+  completed?: boolean;
+  status?: string;
+  statusLabel?: string;
+  targetDate?: string;
+  priority?: KanbanPriority;
+  assignee?: string;
+  itemArchived?: boolean;
+  itemDescription?: string;
+  updatedAt?: string;
 }
 
 export interface NoteComment {

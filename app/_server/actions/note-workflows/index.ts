@@ -6,19 +6,22 @@ import { NOTES_DIR } from "@/app/_consts/files";
 import { ensureDir, serverWriteFile } from "@/app/_server/actions/file";
 import { getListById } from "@/app/_server/actions/checklist";
 import { createItem } from "@/app/_server/actions/checklist-item";
-import { getNoteById } from "@/app/_server/actions/note";
+import { getNoteById, getUserNotes } from "@/app/_server/actions/note";
 import { noteToMarkdown } from "@/app/_server/actions/note/parsers";
 import { getCurrentUser } from "@/app/_server/actions/users";
 import { checkUserPermission } from "@/app/_server/actions/sharing";
 import { broadcast } from "@/app/_server/ws/broadcast";
+import { generateNoteRemindersICS } from "@/app/_utils/kanban/calendar-utils";
 import type {
   Note,
   NoteComment,
   NoteLinkedTask,
+  NoteLinkedTaskPreview,
   NoteReminder,
   Result,
 } from "@/app/_types";
 import { ItemTypes, PermissionTypes } from "@/app/_types/enums";
+import { findItem } from "@/app/_utils/item-tree-utils";
 
 /**
  * @todo fccview is telling you to review this AI generated code
@@ -79,6 +82,13 @@ const parseReminderDueAt = (
 const getEditableNoteFromForm = async (
   formData: FormData,
 ): Promise<Result<{ note: Note; username: string }>> => {
+  return getNoteFromFormWithPermission(formData, PermissionTypes.EDIT);
+};
+
+const getNoteFromFormWithPermission = async (
+  formData: FormData,
+  permission: PermissionTypes,
+): Promise<Result<{ note: Note; username: string }>> => {
   const currentUser = await getCurrentUser();
   if (!currentUser?.username) {
     return { success: false, error: "Not authenticated" };
@@ -90,17 +100,75 @@ const getEditableNoteFromForm = async (
 
   if (!note) return { success: false, error: "Note not found" };
 
-  const canEdit = await checkUserPermission(
+  const hasPermission = await checkUserPermission(
     note.uuid || note.id,
     note.category || "Uncategorized",
     ItemTypes.NOTE,
     currentUser.username,
-    PermissionTypes.EDIT,
+    permission,
   );
 
-  if (!canEdit) return { success: false, error: "Permission denied" };
+  if (!hasPermission) return { success: false, error: "Permission denied" };
 
   return { success: true, data: { note, username: currentUser.username } };
+};
+
+const resolveLinkedTaskPreview = async (
+  linkedTask: NoteLinkedTask,
+  username: string,
+): Promise<NoteLinkedTaskPreview> => {
+  let checklist = linkedTask.checklistUuid
+    ? await getListById(linkedTask.checklistUuid)
+    : undefined;
+
+  if (!checklist) {
+    checklist = await getListById(
+      linkedTask.checklistId,
+      username,
+      linkedTask.checklistCategory || "Uncategorized",
+    );
+  }
+
+  if (!checklist) {
+    return { ...linkedTask, exists: false };
+  }
+
+  const item = findItem(checklist.items, linkedTask.itemId);
+  if (!item) {
+    return {
+      ...linkedTask,
+      exists: false,
+      checklistId: checklist.id,
+      checklistUuid: checklist.uuid,
+      checklistCategory: checklist.category,
+      checklistTitle: checklist.title,
+      checklistType: checklist.type,
+    };
+  }
+
+  const statusLabel = item.status
+    ? checklist.statuses?.find((status) => status.id === item.status)?.label || item.status
+    : undefined;
+
+  return {
+    ...linkedTask,
+    exists: true,
+    checklistId: checklist.id,
+    checklistUuid: checklist.uuid,
+    checklistCategory: checklist.category,
+    checklistTitle: checklist.title,
+    checklistType: checklist.type,
+    title: item.text || linkedTask.title,
+    completed: item.completed,
+    status: item.status,
+    statusLabel,
+    targetDate: item.targetDate,
+    priority: item.priority,
+    assignee: item.assignee,
+    itemArchived: item.isArchived,
+    itemDescription: item.description,
+    updatedAt: item.lastModifiedAt || checklist.updatedAt,
+  };
 };
 
 /**
@@ -324,5 +392,54 @@ export const convertNoteTextToChecklistItem = async (
   } catch (error) {
     console.error("Error converting note text to checklist item:", error);
     return { success: false, error: "Failed to convert note text" };
+  }
+};
+
+export const getNoteLinkedTaskPreviews = async (
+  formData: FormData,
+): Promise<Result<NoteLinkedTaskPreview[]>> => {
+  try {
+    const noteResult = await getNoteFromFormWithPermission(
+      formData,
+      PermissionTypes.READ,
+    );
+    if (!noteResult.success || !noteResult.data) return noteResult as Result<any>;
+
+    const linkedTasks = noteResult.data.note.linkedTasks || [];
+    const previews = await Promise.all(
+      linkedTasks.map((linkedTask) =>
+        resolveLinkedTaskPreview(linkedTask, noteResult.data!.username),
+      ),
+    );
+
+    return { success: true, data: previews };
+  } catch (error) {
+    console.error("Error loading linked task previews:", error);
+    return { success: false, error: "Failed to load linked tasks" };
+  }
+};
+
+export const exportNoteRemindersAsICS = async (): Promise<Result<string>> => {
+  try {
+    const currentUser = await getCurrentUser();
+    if (!currentUser?.username) {
+      return { success: false, error: "Not authenticated" };
+    }
+
+    const notesResult = await getUserNotes({ username: currentUser.username });
+    if (!notesResult.success || !notesResult.data) {
+      return {
+        success: false,
+        error: notesResult.error || "Failed to fetch notes",
+      };
+    }
+
+    return {
+      success: true,
+      data: generateNoteRemindersICS(notesResult.data, "Jotty Note Reminders"),
+    };
+  } catch (error) {
+    console.error("Error exporting note reminders calendar:", error);
+    return { success: false, error: "Failed to export note reminders" };
   }
 };

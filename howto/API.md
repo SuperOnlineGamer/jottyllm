@@ -485,7 +485,9 @@ Retrieves all notes/documents for the authenticated user.
 **Query Parameters:**
 
 - `category` (optional): Filter notes by category name
-- `q` (optional): Search notes by title or content
+- `q` (optional): Search notes by title or content. Structured filters such as `tag:`, `category:`, `updated:`, `reminder:`, and `due:` are supported.
+- `tag`, `color`, `created`, `updated`, `reminder`, `due` (optional): Convenience query parameters that are combined with `q`.
+- `format=ics` (optional): Return a `text/calendar` feed of matching note reminders instead of JSON. Sending an `Accept: text/calendar` header has the same effect.
 
 **Response:**
 
