@@ -9,6 +9,9 @@ const nextConfig = {
   serverExternalPackages: ["ws", "libsodium-wrappers-sumo"],
   serverActions: {
     bodySizeLimit: "100mb",
+    allowedOrigins: process.env.ALLOWED_ORIGINS
+      ? process.env.ALLOWED_ORIGINS.split(",").map((o) => o.trim())
+      : [],
   },
   experimental: {
     serverActions: {
